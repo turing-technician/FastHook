@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context=".MainActivity">
+
+    <TextView
+        android:id="@+id/constructor_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test ConstructorMethod" />
+
+    <TextView
+        android:id="@+id/direct_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test DirectMethod" />
+
+    <TextView
+        android:id="@+id/virtual_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test VirtualMethod" />
+
+    <TextView
+        android:id="@+id/static_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test StaticlMethod" />
+
+    <TextView
+        android:id="@+id/native_direct_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test NativeDirectMethod" />
+
+    <TextView
+        android:id="@+id/native_virtual_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test NativeVirtualMethod" />
+
+    <TextView
+        android:id="@+id/native_static_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test NativeStaticlMethod" />
+
+    <Button
+        android:id="@+id/button_rewrite"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Rewrite Mode"/>
+
+    <Button
+        android:id="@+id/button_replace"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Replace Mode"/>
+
+</LinearLayout>
