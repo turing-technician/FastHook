@@ -364,7 +364,7 @@ bool IsCorrectSize(JNIEnv *env, jclass clazz, jobject method) {
     void *method_code = method_entry;
 #endif
 
-    uint32_t size = ReadInt32((unsigned char *)method_code - 4);
+    uint32_t size = ReadInt32((unsigned char *)method_code - 4) & kCodeSizeMask;
     LOGI("Size:%d Correct Size:%d",size,sizeof(jump_trampoline_));
 
     if(size < sizeof(jump_trampoline_)) {
