@@ -401,7 +401,7 @@ bool IsNonPcRelated(JNIEnv *env, jclass clazz, jobject method) {
     int index = 0;
     while(index < sizeof(jump_trampoline_)) {
         uint16_t inst = ReadInt16((unsigned char *)method_code + index);
-	    if(isThumb32(inst)) {
+	    if(IsThumb32(inst,IsLittleEnd())) {
 	        uint32_t inst_32 = ReadInt32((unsigned char *)method_code + index + 4);
 	        if(HasThumb32PcRelatedInst(inst_32))
 	            return false;
@@ -498,15 +498,15 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
 	int quick_hook_trampoline_len = 12 * 4;
 	int quick_target_trampoline_len = 7 * 4;
 	int quick_original_trampoline_len = 7 * 4;
-	int original_prologue_len = 8;
+	int original_prologue_len = 0;
 	while(original_prologue_len < jump_trampoline_len) {
-	    uint16_t inst = ReadInt16((unsigned char *)target_code + original_prologue_len);
-	    if(isThumb32(inst)) {
-	        original_prologue_len += 4;
-	    }else {
-	        original_prologue_len += 2;
-	    }
+        if(IsThumb32(ReadInt16((unsigned char *)target_code + original_prologue_len),IsLittleEnd())) {
+            original_prologue_len += 4;
+        }else {
+            original_prologue_len += 2;
+        }
 	}
+	LOGI("OriginalPrologueLen:%d",original_prologue_len);
 
 	int jump_trampoline_entry_index = 4;
 
@@ -574,12 +574,14 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
     /*for(int i = 0;i < original_prologue_len/4;i++) {
         LOGI("OriginalPrologue[%d] %x %x %x %x",i,((unsigned char*)original_prologue)[i*4+0],((unsigned char*)original_prologue)[i*4+1],((unsigned char*)original_prologue)[i*4+2],((unsigned char*)original_prologue)[i*4+3]);
     }*/
+    for(int i = 0;i < 3;i++) {
+        LOGI("OriginalPrologue[%d] %x %x %x %x",i,((unsigned char*)target_code)[i*4+0],((unsigned char*)target_code)[i*4+1],((unsigned char*)target_code)[i*4+2],((unsigned char*)target_code)[i*4+3]);
+    }
 
     memcpy(jump_trampoline + jump_trampoline_entry_index, &quick_hook_trampoline_entry, pointer_size_);
     for(int i = 0;i < jump_trampoline_len/4;i++) {
         LOGI("JumpTrampoline[%d] %x %x %x %x",i,((unsigned char*)jump_trampoline)[i*4+0],((unsigned char*)jump_trampoline)[i*4+1],((unsigned char*)jump_trampoline)[i*4+2],((unsigned char*)jump_trampoline)[i*4+3]);
     }
-
 
     memcpy(quick_hook_trampoline + quick_hook_trampoline_target_index, &art_target_method, pointer_size_);
     memcpy(quick_hook_trampoline + quick_hook_trampoline_hook_index, &art_hook_method, pointer_size_);

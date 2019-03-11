@@ -10,15 +10,14 @@ import pers.turing.technician.fasthookapp.MainApplication;
 public class Test {
 
     public String mMessage;
-    public static int mTest;
 
     static {
         System.loadLibrary("native-lib");
     }
 
     public Test(String message) {
+        Log.e(MainApplication.TAG,"invoke ConstrctorTest");
         mMessage = message;
-        //Log.e(MainApplication.TAG,"invoke ConstrctorTest");
     }
 
     public String testDirectMethod(String message) {
@@ -26,20 +25,17 @@ public class Test {
     }
 
     private String testDirect(String message) {
-        mMessage = message;
-        //Log.e(MainApplication.TAG,"invoke DirectTest");
+        Log.e(MainApplication.TAG,"invoke DirectTest");
         return message;
     }
 
     public String testVirtual(String message) {
-        mMessage = message;
-        //Log.e(MainApplication.TAG,"invoke VirtualTest");
+        Log.e(MainApplication.TAG,"invoke VirtualTest");
         return message;
     }
 
     public static String testStatic(String message) {
-        mTest = 1;
-        //Log.e(MainApplication.TAG,"invoke StaticTest");
+        Log.e(MainApplication.TAG,"invoke StaticTest");
         return message;
     }
 

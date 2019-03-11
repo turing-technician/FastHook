@@ -203,7 +203,7 @@ public class FastHookManager {
                                     	success = isCorrectSize(targetMethod);
                                         if(success) {
                                             success = isNonPcRelated(targetMethod);
-                                            Logd("isNonPcRelated:"+success);
+                                            Logd("IsNonPcRelated:"+success);
                                         }
                                 	}
                             	}else if((jitState == JIT_NONE && !needCompile) || jitState == JIT_COMPILE) {

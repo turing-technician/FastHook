@@ -284,8 +284,23 @@ static inline uint32_t RoundUp(uint32_t size, uint32_t ptr_size) {
 	return (size + ptr_size - 1) - ((size + ptr_size - 1) & (ptr_size - 1));
 }
 
-static inline bool isThumb32(uint16_t inst) {
-	return ((inst & 0xe000) == 0xe000 && (inst & 0x1800) != 0x0000);
+static inline bool IsLittleEnd() {
+    bool ret = true;
+
+    int i = 1;
+    if(!(*(char*)&i == 1)) {
+        ret = false;
+    }
+
+    return ret;
+}
+
+static inline bool IsThumb32(uint16_t inst, bool little_end) {
+    LOGI("Inst:%x LittleEnd:%d",inst,little_end);
+    if(little_end) {
+        return ((inst & 0xe000) == 0xe000 && (inst & 0x1800) != 0x0000);
+    }
+    return ((inst & 0x00e0) == 0x00e0 && (inst & 0x0018) != 0x0000);
 }
 
 static inline bool HasArm64PcRelatedInst(uint32_t inst) {
