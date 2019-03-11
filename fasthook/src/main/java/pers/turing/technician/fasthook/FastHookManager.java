@@ -218,6 +218,10 @@ public class FastHookManager {
                             	if(success) {
                                 	doFullRewriteHookInternal(targetMethod,hookMethod,forwardMethod);
                             	}else {
+                                    if(Build.VERSION.SDK_INT >= ANDROID_O && BuildConfig.DEBUG) {
+                                        setNativeMethod(targetMethod);
+                                        Logd("set target method to native on debug mode");
+                                    }
                                 	doReplaceHookInternal(targetMethod,hookMethod,forwardMethod,isNative);
                             	}
                             	break;

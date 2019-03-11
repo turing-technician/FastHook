@@ -73,4 +73,16 @@ public class HookMethodInfo {
     }
 
     public native static String forwardNativeStaticTest(String message);
+
+    public static void hookSystemTest(Object thiz, CharSequence charSequence) {
+        if(charSequence.toString().contains("Test SystemMethod") && !charSequence.toString().contains("hook param")) {
+            Log.e(MainApplication.TAG,"hook SystemTest");
+            String message = "hook param-"+charSequence;
+            forwardSystemTest(thiz,message);
+        }else {
+            forwardSystemTest(thiz,charSequence);
+        }
+    }
+
+    public native static void forwardSystemTest(Object thiz, CharSequence charSequence);
 }

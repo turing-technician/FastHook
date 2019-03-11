@@ -2,19 +2,23 @@ package pers.turing.technician.fasthookapp.hook;
 
 import android.util.Log;
 
+import java.lang.reflect.Method;
+
+import pers.turing.technician.fasthook.FastHookManager;
 import pers.turing.technician.fasthookapp.MainApplication;
 
 public class Test {
 
     public String mMessage;
+    public static int mTest;
 
     static {
         System.loadLibrary("native-lib");
     }
 
     public Test(String message) {
-        Log.e(MainApplication.TAG,"invoke ConstrctorTest");
         mMessage = message;
+        //Log.e(MainApplication.TAG,"invoke ConstrctorTest");
     }
 
     public String testDirectMethod(String message) {
@@ -22,17 +26,20 @@ public class Test {
     }
 
     private String testDirect(String message) {
-        Log.e(MainApplication.TAG,"invoke DirectTest");
+        mMessage = message;
+        //Log.e(MainApplication.TAG,"invoke DirectTest");
         return message;
     }
 
     public String testVirtual(String message) {
-        Log.e(MainApplication.TAG,"invoke VirtualTest");
+        mMessage = message;
+        //Log.e(MainApplication.TAG,"invoke VirtualTest");
         return message;
     }
 
     public static String testStatic(String message) {
-        Log.e(MainApplication.TAG,"invoke StaticTest");
+        mTest = 1;
+        //Log.e(MainApplication.TAG,"invoke StaticTest");
         return message;
     }
 

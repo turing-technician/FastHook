@@ -56,6 +56,13 @@ public class HookInfo {
             HOOK_CLASS,"forwardNativeStaticTest","Ljava/lang/String;"
     };
 
+    private static String[] mHookItem8 = {
+            MODE,
+            "android.widget.TextView","setText","Ljava/lang/CharSequence;",
+            HOOK_CLASS,"hookSystemTest","Ljava/lang/Object;Ljava/lang/CharSequence;",
+            HOOK_CLASS,"forwardSystemTest","Ljava/lang/Object;Ljava/lang/CharSequence;"
+    };
+
     public static String[][] HOOK_ITEMS = {
             mHookItem,
             mHookItem2,
@@ -63,6 +70,7 @@ public class HookInfo {
             mHookItem4,
             mHookItem5,
             mHookItem6,
-            mHookItem7
+            mHookItem7,
+            mHookItem8
     };
 }

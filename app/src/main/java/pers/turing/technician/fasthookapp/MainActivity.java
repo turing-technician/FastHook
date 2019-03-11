@@ -22,6 +22,7 @@ public class MainActivity extends AppCompatActivity {
     TextView mNativeDirectText;
     TextView mNativeVirtualText;
     TextView mNativeStaticText;
+    TextView mSystemText;
 
     String mConstructorTextString;
     String mDirectTextString;
@@ -30,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     String mNativeDirectTextString;
     String mNativeVirtualTextString;
     String mNativeStaticTextString;
+    String mSystemTextString;
 
     Button mRewriteMode;
     Button mReplaceMode;
@@ -50,6 +52,7 @@ public class MainActivity extends AppCompatActivity {
         mNativeDirectText = findViewById(R.id.native_direct_test);
         mNativeVirtualText = findViewById(R.id.native_virtual_test);
         mNativeStaticText = findViewById(R.id.native_static_test);
+        mSystemText = findViewById(R.id.system_test);
 
         mConstructorTextString = mConstructorText.getText().toString();
         mDirectTextString = mDirectText.getText().toString();
@@ -58,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
         mNativeDirectTextString = mNativeDirectText.getText().toString();
         mNativeVirtualTextString = mNativeVirtualText.getText().toString();
         mNativeStaticTextString = mNativeStaticText.getText().toString();
+        mSystemTextString = mSystemText.getText().toString();
 
         mRewriteMode = findViewById(R.id.button_rewrite);
         mReplaceMode = findViewById(R.id.button_replace);
@@ -106,6 +110,7 @@ public class MainActivity extends AppCompatActivity {
 
         Test test = new Test(mConstructorText.getText().toString());
         mConstructorText.setText(mode + test.mMessage);
+
         if(test.mMessage.contains("hook param")) {
             mConstructorText.setTextColor(Color.GREEN);
         }else {
@@ -164,6 +169,15 @@ public class MainActivity extends AppCompatActivity {
             mNativeStaticText.setTextColor(Color.GREEN);
         }else {
             mNativeStaticText.setTextColor(Color.RED);
+        }
+
+        String systemMessage = mSystemTextString;
+        mSystemText.setText(systemMessage);
+        mSystemText.setText(mode + mSystemText.getText());
+        if(mSystemText.getText().toString().contains("hook param")) {
+            mSystemText.setTextColor(Color.GREEN);
+        }else {
+            mSystemText.setTextColor(Color.RED);
         }
     }
 }
