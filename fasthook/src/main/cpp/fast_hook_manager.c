@@ -36,6 +36,11 @@ static inline void InitJit() {
 
     void *compiler_options = (void *)ReadPointer((unsigned char *)jit_compiler_handle_ + pointer_size_);
     memcpy((unsigned char *)compiler_options + 6 * pointer_size_,&max_units,pointer_size_);
+
+    suspend_all_ = (void (*)())(fake_dlsym(art_lib,"_ZN3art3Dbg9SuspendVMEv"));
+    resume_all_ = (void (*)())(fake_dlsym(art_lib,"_ZN3art3Dbg8ResumeVMEv"));
+
+    runtime_ = (void *)ReadPointer(fake_dlsym(art_lib, "_ZN3art7Runtime9instance_E"));
 }
 
 static inline void *EntryPointToCodePoint(void *entry_point) {
@@ -97,13 +102,20 @@ static inline void CompileArtMethod(void) {
         status = (*jvm_)->AttachCurrentThread(jvm_,&env, NULL);
         if(!status) {
             while(1) {
+                if(!compile_param_) {
+                    compile_param_ = (struct CompileParam *)malloc(sizeof(struct CompileParam));
+                    compile_param_->art_method = NULL;
+                    compile_param_->success = -1;
+                }
                 pthread_mutex_lock(&compile_mutex_);
                 pthread_cond_wait(&compile_cond_,&compile_mutex_);
 
                 void *art_method = compile_param_->art_method;
                 void *thread = CurrentThread();
 
+                suspend_all_();
                 compile_param_->success = jit_compile_method_(jit_compiler_handle_, art_method, thread, false);
+                resume_all_();
 
                 pthread_mutex_unlock(&compile_mutex_);
             }
@@ -181,61 +193,15 @@ static inline void InitCompileThread() {
         pthread_mutex_destroy(&compile_mutex_);
 
         compile_param_ = NULL;
-    }else {
-        compile_param_ = (struct CompileParam *)malloc(sizeof(struct CompileParam));
-        compile_param_->art_method = NULL;
-        compile_param_->success = -1;
     }
 }
 
-static inline void InitTrampoline(int version) {
-#if defined(__arm__)
-    switch(version) {
-    case kAndroidP:
-    hook_trampoline_[6] = 0x18;
-    break;
-    case kAndroidOMR1:
-    case kAndroidO:
-    hook_trampoline_[6] = 0x1c;
-    break;
-    case kAndroidNMR1:
-    case kAndroidN:
-    hook_trampoline_[6] = 0x20;
-    break;
-    case kAndroidM:
-    hook_trampoline_[6] = 0x24;
-    break;
-    case kAndroidLMR1:
-    hook_trampoline_[6] = 0x2c;
-    break;
-    case kAndroidL:
-    hook_trampoline_[6] = 0x28;
-    break;
+void DisableHiddenApiCheck(JNIEnv *env, jclass clazz) {
+    if(kHiddenApiPolicyOffset > 0) {
+        int no_check = 0;
+        memcpy((unsigned char *)runtime_ + kHiddenApiPolicyOffset,&no_check,4);
+        LOGI("Disable Hidden Api Check:%d",ReadInt32((unsigned char *)runtime_ + kHiddenApiPolicyOffset));
     }
-#elif defined(__aarch64__)
-    switch(version) {
-        case kAndroidP:
-            hook_trampoline_[5] = 0x10;
-            break;
-        case kAndroidOMR1:
-        case kAndroidO:
-            hook_trampoline_[5] = 0x14;
-            break;
-        case kAndroidNMR1:
-        case kAndroidN:
-            hook_trampoline_[5] = 0x18;
-            break;
-        case kAndroidM:
-            hook_trampoline_[5] = 0x18;
-            break;
-        case kAndroidLMR1:
-            hook_trampoline_[5] = 0x1c;
-            break;
-        case kAndroidL:
-            hook_trampoline_[5] = 0x14;
-            break;
-    }
-#endif
 }
 
 jint Init(JNIEnv *env, jclass clazz, jint version) {
@@ -245,6 +211,11 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
 
     switch(version) {
         case kAndroidP:
+            if(pointer_size_ == kPointerSize32) {
+                kHiddenApiPolicyOffset = 840;
+            }else {
+                kHiddenApiPolicyOffset = 1364;
+            }
             kTLSSlotArtThreadSelf = 7;
             kAccCompileDontBother = 0x02000000;
             kArtMethodHotnessCountOffset = 18;
@@ -290,8 +261,6 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
             break;
     }
 
-    InitTrampoline(version);
-
     if(kTLSSlotArtThreadSelf > 0) {
         InitJit();
         InitCompileThread();
@@ -327,10 +296,6 @@ long GetQuickToInterpreterBridge(JNIEnv *env, jclass clazz, jclass target_class,
     return entry_point;
 }
 
-bool ComparePointer(JNIEnv *env, jclass clazz, jlong src, jlong dest) {
-    return (unsigned long)src == (unsigned long)dest;
-}
-
 bool CompileMethod(JNIEnv *env, jclass clazz, jobject method) {
     bool ret = false;
 
@@ -355,7 +320,20 @@ bool CompileMethod(JNIEnv *env, jclass clazz, jobject method) {
     return ret;
 }
 
-bool IsCorrectSize(JNIEnv *env, jclass clazz, jobject method) {
+bool IsCompiled(JNIEnv *env, jclass clazz, jobject method, jlong quick_to_interpreter_bridge) {
+    bool ret = false;
+
+    void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
+    void *method_entry = (void *)ReadPointer((unsigned char *)art_method + kArtMethodQuickCodeOffset);
+
+    if(method_entry != (void *)quick_to_interpreter_bridge)
+        ret = true;
+
+    LOGI("IsCompiled:%d",ret);
+    return ret;
+}
+
+bool DoRewriteHookCheck(JNIEnv *env, jclass clazz, jobject method) {
     void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
     void *method_entry = (void *)ReadPointer((unsigned char *)art_method + kArtMethodQuickCodeOffset);
 #if defined(__arm__)
@@ -365,13 +343,44 @@ bool IsCorrectSize(JNIEnv *env, jclass clazz, jobject method) {
 #endif
 
     uint32_t size = ReadInt32((unsigned char *)method_code - 4) & kCodeSizeMask;
-    LOGI("Size:%d Correct Size:%d",size,sizeof(jump_trampoline_));
 
     if(size < sizeof(jump_trampoline_)) {
         return false;
     }
 
+#if defined(__arm__)
+
+    int index = 0;
+    while(index < sizeof(jump_trampoline_)) {
+        uint16_t inst = ReadInt16((unsigned char *)method_code + index);
+        if(IsThumb32(inst,IsLittleEnd())) {
+            uint32_t inst_32 = ReadInt32((unsigned char *)method_code + index + 4);
+            if(HasThumb32PcRelatedInst(inst_32))
+                return false;
+
+            index += 4;
+        }else {
+            if(HasThumb16PcRelatedInst(inst))
+                return false;
+
+            index += 2;
+        }
+    }
+
     return true;
+#elif defined(__aarch64__)
+
+    int index = 0;
+    while(index < sizeof(jump_trampoline_)) {
+        uint32_t inst = ReadInt32((unsigned char *)method_code + index);
+        if(HasArm64PcRelatedInst(inst))
+            return false;
+
+        index += 4;
+    }
+
+    return true;
+#endif
 }
 
 bool IsNativeMethod(JNIEnv *env, jclass clazz, jobject method) {
@@ -389,48 +398,6 @@ void SetNativeMethod(JNIEnv *env, jclass clazz, jobject method) {
     void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
 
     AddArtMethodAccessFlag(art_method,kAccNative);
-}
-
-bool IsNonPcRelated(JNIEnv *env, jclass clazz, jobject method) {
-    void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
-    void *method_entry = (void *)ReadPointer((unsigned char *)art_method + kArtMethodQuickCodeOffset);
-#if defined(__arm__)
-
-    void *method_code = EntryPointToCodePoint(method_entry);
-
-    int index = 0;
-    while(index < sizeof(jump_trampoline_)) {
-        uint16_t inst = ReadInt16((unsigned char *)method_code + index);
-	    if(IsThumb32(inst,IsLittleEnd())) {
-	        uint32_t inst_32 = ReadInt32((unsigned char *)method_code + index + 4);
-	        if(HasThumb32PcRelatedInst(inst_32))
-	            return false;
-
-	        index += 4;
-	    }else {
-	        if(HasThumb16PcRelatedInst(inst))
-	            return false;
-
-	        index += 2;
-	    }
-    }
-
-    return true;
-#elif defined(__aarch64__)
-
-    void *method_code = method_entry;
-
-    int index = 0;
-    while(index < sizeof(jump_trampoline_)) {
-        uint32_t inst = ReadInt32((unsigned char *)method_code + index);
-        if(HasArm64PcRelatedInst(inst))
-            return false;
-
-        index += 4;
-    }
-
-    return true;
-#endif
 }
 
 int CheckJitState(JNIEnv *env, jclass clazz, jobject target_method, jlong quick_to_interpreter_bridge) {
@@ -488,100 +455,98 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
 #if defined(__arm__)
 
     void *target_entry = (void *)ReadPointer((unsigned char *) art_target_method + kArtMethodQuickCodeOffset);
-	void *target_code = EntryPointToCodePoint(target_entry);
-	void *quick_hook_trampoline_entry = CodePointToEntryPoint(quick_hook_trampoline);
-	void *hook_entry = (void *)ReadPointer((unsigned char *) art_hook_method + kArtMethodQuickCodeOffset);
-	void *next_entry = CodePointToEntryPoint(quick_original_trampoline);
-	void *forward_entry = CodePointToEntryPoint(quick_target_trampoline);
+    void *target_code = EntryPointToCodePoint(target_entry);
+    void *quick_hook_trampoline_entry = CodePointToEntryPoint(quick_hook_trampoline);
+    void *hook_entry = (void *)ReadPointer((unsigned char *) art_hook_method + kArtMethodQuickCodeOffset);
+    void *next_entry = CodePointToEntryPoint(quick_original_trampoline);
+    void *forward_entry = CodePointToEntryPoint(quick_target_trampoline);
 
-	int jump_trampoline_len = 2 * 4;
-	int quick_hook_trampoline_len = 12 * 4;
-	int quick_target_trampoline_len = 7 * 4;
-	int quick_original_trampoline_len = 7 * 4;
-	int original_prologue_len = 0;
-	while(original_prologue_len < jump_trampoline_len) {
+    int jump_trampoline_len = 2 * 4;
+    int quick_hook_trampoline_len = 12 * 4;
+    int quick_target_trampoline_len = 7 * 4;
+    int quick_original_trampoline_len = 7 * 4;
+    int original_prologue_len = 0;
+    while(original_prologue_len < jump_trampoline_len) {
         if(IsThumb32(ReadInt16((unsigned char *)target_code + original_prologue_len),IsLittleEnd())) {
             original_prologue_len += 4;
         }else {
             original_prologue_len += 2;
         }
-	}
-	LOGI("OriginalPrologueLen:%d",original_prologue_len);
+    }
+    LOGI("OriginalPrologueLen:%d",original_prologue_len);
 
-	int jump_trampoline_entry_index = 4;
+    int jump_trampoline_entry_index = 4;
 
-	int quick_hook_trampoline_target_index = 32;
-	int quick_hook_trampoline_hook_index = 36;
-	int quick_hook_trampoline_hook_entry_index = 40;
-	int quick_hook_trampoline_next_entry_index = 44;
+    int quick_hook_trampoline_target_index = 32;
+    int quick_hook_trampoline_hook_index = 36;
+    int quick_hook_trampoline_hook_entry_index = 40;
+    int quick_hook_trampoline_next_entry_index = 44;
 
-	int quick_target_trampoline_original_index = 4;
-	int quick_target_trampoline_target_index = 20;
-	int quick_target_trampoline_original_next_entry = 24;
+    int quick_target_trampoline_original_index = 4;
+    int quick_target_trampoline_target_index = 20;
+    int quick_target_trampoline_original_next_entry = 24;
 
-	int quick_original_trampoline_target_index = 4;
-	int quick_original_trampoline_original_next_entry = 24;
+    int quick_original_trampoline_target_index = 4;
+    int quick_original_trampoline_original_next_entry = 24;
 
-	void *original_next_entry = CodePointToEntryPoint((void *)((long)target_code + original_prologue_len));
+    void *original_next_entry = CodePointToEntryPoint((void *)((long)target_entry + original_prologue_len));
 
-	unsigned char *original_code = (unsigned char *) quick_original_trampoline;
-	original_code[0] = 0x00;
-	original_code[1] = 0xbf;
-	original_code[2] = 0x00;
-	original_code[3] = 0xbf;
+    unsigned char *original_code = (unsigned char *) quick_original_trampoline;
+    original_code[0] = 0x00;
+    original_code[1] = 0xbf;
+    original_code[2] = 0x00;
+    original_code[3] = 0xbf;
 
 #elif defined(__aarch64__)
 
     void *target_entry = (void *)ReadPointer((unsigned char *) art_target_method + kArtMethodQuickCodeOffset);
-    void *target_code = target_entry;
-    void *quick_hook_trampoline_entry = quick_hook_trampoline;
-    void *hook_entry = (void *)ReadPointer((unsigned char *) art_hook_method + kArtMethodQuickCodeOffset);
-    void *next_entry = quick_original_trampoline;
-    void *forward_entry = quick_target_trampoline;
+	void *target_code = target_entry;
+	void *quick_hook_trampoline_entry = quick_hook_trampoline;
+	void *hook_entry = (void *)ReadPointer((unsigned char *) art_hook_method + kArtMethodQuickCodeOffset);
+	void *next_entry = quick_original_trampoline;
+	void *forward_entry = quick_target_trampoline;
 
-    int jump_trampoline_len = 4 * 4;
-    int quick_hook_trampoline_len = 16 * 4;
-    int quick_target_trampoline_len = 11 * 4;
-    int quick_original_trampoline_len = 11 * 4;
-    int original_prologue_len = 16;
+	int jump_trampoline_len = 4 * 4;
+	int quick_hook_trampoline_len = 16 * 4;
+	int quick_target_trampoline_len = 11 * 4;
+	int quick_original_trampoline_len = 11 * 4;
+	int original_prologue_len = 16;
 
-    int jump_trampoline_entry_index = 8;
+	int jump_trampoline_entry_index = 8;
 
-    int quick_hook_trampoline_target_index = 32;
-    int quick_hook_trampoline_hook_index = 40;
-    int quick_hook_trampoline_hook_entry_index = 48;
-    int quick_hook_trampoline_next_entry_index = 56;
+	int quick_hook_trampoline_target_index = 32;
+	int quick_hook_trampoline_hook_index = 40;
+	int quick_hook_trampoline_hook_entry_index = 48;
+	int quick_hook_trampoline_next_entry_index = 56;
 
-    int quick_target_trampoline_original_index = 4;
-    int quick_target_trampoline_target_index = 28;
-    int quick_target_trampoline_original_next_entry = 36;
+	int quick_target_trampoline_original_index = 4;
+	int quick_target_trampoline_target_index = 28;
+	int quick_target_trampoline_original_next_entry = 36;
 
-    int quick_original_trampoline_target_index = 4;
-    int quick_original_trampoline_original_next_entry = 36;
+	int quick_original_trampoline_target_index = 4;
+	int quick_original_trampoline_original_next_entry = 36;
 
-    void *original_next_entry = (void *)((long)target_entry + original_prologue_len);
+	void *original_next_entry = (void *)((long)target_entry + original_prologue_len);
 
-    unsigned char *original_code = (unsigned char *) quick_original_trampoline;
-    original_code[0] = 0x1f;
-    original_code[1] = 0x20;
-    original_code[2] = 0x03;
-    original_code[3] = 0xd5;
+	unsigned char *original_code = (unsigned char *) quick_original_trampoline;
+	original_code[0] = 0x1f;
+	original_code[1] = 0x20;
+	original_code[2] = 0x03;
+	original_code[3] = 0xd5;
 
 #endif
 
     unsigned char original_prologue[original_prologue_len];
-    memcpy(original_prologue,(char *)target_code,original_prologue_len);
-    /*for(int i = 0;i < original_prologue_len/4;i++) {
-        LOGI("OriginalPrologue[%d] %x %x %x %x",i,((unsigned char*)original_prologue)[i*4+0],((unsigned char*)original_prologue)[i*4+1],((unsigned char*)original_prologue)[i*4+2],((unsigned char*)original_prologue)[i*4+3]);
-    }*/
+    memcpy(original_prologue,(unsigned char *)target_code,original_prologue_len);
     for(int i = 0;i < 3;i++) {
-        LOGI("OriginalPrologue[%d] %x %x %x %x",i,((unsigned char*)target_code)[i*4+0],((unsigned char*)target_code)[i*4+1],((unsigned char*)target_code)[i*4+2],((unsigned char*)target_code)[i*4+3]);
+        LOGI("OriginalPrologue[%d] %x %x %x %x",i,((unsigned char*)original_prologue)[i*4+0],((unsigned char*)original_prologue)[i*4+1],((unsigned char*)original_prologue)[i*4+2],((unsigned char*)original_prologue)[i*4+3]);
     }
 
     memcpy(jump_trampoline + jump_trampoline_entry_index, &quick_hook_trampoline_entry, pointer_size_);
     for(int i = 0;i < jump_trampoline_len/4;i++) {
         LOGI("JumpTrampoline[%d] %x %x %x %x",i,((unsigned char*)jump_trampoline)[i*4+0],((unsigned char*)jump_trampoline)[i*4+1],((unsigned char*)jump_trampoline)[i*4+2],((unsigned char*)jump_trampoline)[i*4+3]);
     }
+
 
     memcpy(quick_hook_trampoline + quick_hook_trampoline_target_index, &art_target_method, pointer_size_);
     memcpy(quick_hook_trampoline + quick_hook_trampoline_hook_index, &art_hook_method, pointer_size_);
@@ -607,7 +572,7 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
     }
 
     if(art_forward_method) {
-        memcpy((char *) art_forward_method + kArtMethodQuickCodeOffset,&forward_entry,pointer_size_);
+        memcpy((unsigned char *) art_forward_method + kArtMethodQuickCodeOffset,&forward_entry,pointer_size_);
         LOGI("Forward NewEntry:%p",ReadPointer((unsigned char *) art_forward_method + kArtMethodQuickCodeOffset));
     }
 
@@ -619,16 +584,16 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
 
     long page_size = sysconf(_SC_PAGESIZE);
     unsigned alignment = (unsigned)((unsigned long long)target_code % page_size);
-    int ret = mprotect((void *) (target_code - alignment), (size_t) (alignment + jump_trampoline_len),
+    int ret = mprotect((void *) (target_code - alignment), (size_t) (alignment + original_prologue_len),
                        PROT_READ | PROT_WRITE | PROT_EXEC);
     LOGI("Mprotect:%d Pagesize:%d Alignment:%d",ret,page_size,alignment);
 
-    memcpy((char *) art_forward_method + kArtMethodQuickCodeOffset,&quick_to_interpreter_bridge,pointer_size_);
+    memcpy((unsigned char *) art_target_method + kArtMethodQuickCodeOffset,&quick_to_interpreter_bridge,pointer_size_);
     memcpy(target_code, jump_trampoline, jump_trampoline_len);
     for(int i = 0;i < jump_trampoline_len/4;i++) {
         LOGI("TargetCode[%d] %x %x %x %x",i,((unsigned char *)target_code)[i*4+0],((unsigned char *)target_code)[i*4+1],((unsigned char *)target_code)[i*4+2],((unsigned char *)target_code)[i*4+3]);
     }
-    memcpy((char *) art_forward_method + kArtMethodQuickCodeOffset,&target_entry,pointer_size_);
+    memcpy((unsigned char *) art_target_method + kArtMethodQuickCodeOffset,&target_entry,pointer_size_);
 
     __builtin___clear_cache(target_code, target_code + jump_trampoline_len);
 
@@ -660,49 +625,49 @@ jint DoPartRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
 
     void *target_entry = (void *)ReadPointer((unsigned char *) art_target_method + kArtMethodQuickCodeOffset);
     void *hook_entry = (void *)ReadPointer((unsigned char *) art_hook_method + kArtMethodQuickCodeOffset);
-	void *next_entry = CodePointToEntryPoint((void *)quick_original_trampoline);
-	void *prev_next_entry = CodePointToEntryPoint(quick_hook_trampoline);
-	void *forward_entry = CodePointToEntryPoint(quick_target_trampoline);
+    void *next_entry = CodePointToEntryPoint((void *)quick_original_trampoline);
+    void *prev_next_entry = CodePointToEntryPoint(quick_hook_trampoline);
+    void *forward_entry = CodePointToEntryPoint(quick_target_trampoline);
 
-	int quick_hook_trampoline_len = 12 * 4;
-	int quick_target_trampoline_len = 6 * 4;
+    int quick_hook_trampoline_len = 12 * 4;
+    int quick_target_trampoline_len = 7 * 4;
 
-	int quick_hook_trampoline_target_index = 32;
-	int quick_hook_trampoline_hook_index = 36;
-	int quick_hook_trampoline_hook_entry_index = 40;
-	int quick_hook_trampoline_next_entry_index = 44;
+    int quick_hook_trampoline_target_index = 32;
+    int quick_hook_trampoline_hook_index = 36;
+    int quick_hook_trampoline_hook_entry_index = 40;
+    int quick_hook_trampoline_next_entry_index = 44;
 
-	int original_prologue_len = 8;
-	int quick_original_trampoline_original_index = 4;
-	int quick_original_trampoline_next_entry_index = 20;
+    int original_prologue_len = 12;
+    int quick_original_trampoline_original_index = 4;
+    int quick_original_trampoline_next_entry_index = 24;
 
-	int quick_target_trampoline_original_index = 4;
-	int quick_target_trampoline_target_index = 16;
-	int quick_target_trampoline_next_entry_index = 20;
+    int quick_target_trampoline_original_index = 4;
+    int quick_target_trampoline_target_index = 20;
+    int quick_target_trampoline_next_entry_index = 24;
 
 #elif defined(__aarch64__)
 
     void *target_entry = (void *)ReadPointer((unsigned char *) art_target_method + kArtMethodQuickCodeOffset);
-    void *hook_entry = (void *)ReadPointer((unsigned char *) art_hook_method + kArtMethodQuickCodeOffset);
-    void *next_entry = (void *)quick_original_trampoline;
-    void *prev_next_entry = quick_hook_trampoline;
-    void *forward_entry = quick_target_trampoline;
+	void *hook_entry = (void *)ReadPointer((unsigned char *) art_hook_method + kArtMethodQuickCodeOffset);
+	void *next_entry = (void *)quick_original_trampoline;
+	void *prev_next_entry = quick_hook_trampoline;
+	void *forward_entry = quick_target_trampoline;
 
-    int quick_hook_trampoline_len = 16 * 4;
-    int quick_target_trampoline_len = 11 * 4;
+	int quick_hook_trampoline_len = 16 * 4;
+	int quick_target_trampoline_len = 11 * 4;
 
-    int quick_hook_trampoline_target_index = 32;
-    int quick_hook_trampoline_hook_index = 40;
-    int quick_hook_trampoline_hook_entry_index = 48;
-    int quick_hook_trampoline_next_entry_index = 56;
+	int quick_hook_trampoline_target_index = 32;
+	int quick_hook_trampoline_hook_index = 40;
+	int quick_hook_trampoline_hook_entry_index = 48;
+	int quick_hook_trampoline_next_entry_index = 56;
 
-    int original_prologue_len = 16;
-    int quick_original_trampoline_original_index = 4;
-    int quick_original_trampoline_next_entry_index = 36;
+	int original_prologue_len = 16;
+	int quick_original_trampoline_original_index = 4;
+	int quick_original_trampoline_next_entry_index = 36;
 
-    int quick_target_trampoline_original_index = 4;
-    int quick_target_trampoline_target_index = 28;
-    int quick_target_trampoline_next_entry_index = 36;
+	int quick_target_trampoline_original_index = 4;
+	int quick_target_trampoline_target_index = 28;
+	int quick_target_trampoline_next_entry_index = 36;
 
 #endif
 
@@ -716,7 +681,7 @@ jint DoPartRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
 
     if(art_forward_method) {
         unsigned char original_prologue[original_prologue_len];
-        memcpy(original_prologue,(unsigned char *)quick_original_trampoline + quick_target_trampoline_len,original_prologue_len);
+        memcpy(original_prologue,(unsigned char *)quick_original_trampoline + quick_original_trampoline_original_index,original_prologue_len);
         for(int i = 0;i < original_prologue_len/4;i++) {
             LOGI("OriginalPrologue[%d] %x %x %x %x",i,((unsigned char*)original_prologue)[i*4+0],((unsigned char*)original_prologue)[i*4+1],((unsigned char*)original_prologue)[i*4+2],((unsigned char*)original_prologue)[i*4+3]);
         }
@@ -739,14 +704,14 @@ jint DoPartRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
         __builtin___clear_cache(quick_target_trampoline, quick_target_trampoline + quick_target_trampoline_len);
     }
 
-    memcpy((char *) art_forward_method + kArtMethodQuickCodeOffset,&quick_to_interpreter_bridge,pointer_size_);
+    memcpy((char *) art_target_method + kArtMethodQuickCodeOffset,&quick_to_interpreter_bridge,pointer_size_);
     memcpy((void *)(prev_quick_hook_trampoline + quick_hook_trampoline_next_entry_index), &prev_next_entry, pointer_size_);
     for(int i = 0;i < quick_hook_trampoline_len/4;i++) {
         LOGI("PrevQuickHookTrampoline[%d] %x %x %x %x",i,((unsigned char*)prev_quick_hook_trampoline)[i*4+0],((unsigned char*)prev_quick_hook_trampoline)[i*4+1],((unsigned char*)prev_quick_hook_trampoline)[i*4+2],((unsigned char*)prev_quick_hook_trampoline)[i*4+3]);
     }
-    memcpy((char *) art_forward_method + kArtMethodQuickCodeOffset,&target_entry,pointer_size_);
+    memcpy((char *) art_target_method + kArtMethodQuickCodeOffset,&target_entry,pointer_size_);
 
-    __builtin___clear_cache(prev_quick_hook_trampoline, prev_quick_hook_trampoline + quick_hook_trampoline_len);
+    __builtin___clear_cache((void *)prev_quick_hook_trampoline, (unsigned char*)prev_quick_hook_trampoline + quick_hook_trampoline_len);
 
     (*env)->SetLongField(env, target_record, kHookRecordClassInfo.quick_hook_trampoline_, (long)quick_hook_trampoline);
     if(art_forward_method) {
@@ -770,26 +735,26 @@ jint DoReplaceHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hoo
 #if defined(__arm__)
 
     int hook_trampoline_len = 3 * 4;
-	int target_trampoline_len = 4 * 4;
+    int target_trampoline_len = 4 * 4;
 
-	int hook_trampoline_target_index = 8;
-	int target_trampoline_target_index = 8;
-	int target_trampoline_target_entry_index = 12;
+    int hook_trampoline_target_index = 8;
+    int target_trampoline_target_index = 8;
+    int target_trampoline_target_entry_index = 12;
 
-	void *new_target_entry = CodePointToEntryPoint(hook_trampoline);
-	void *new_forward_entry =  CodePointToEntryPoint(target_trampoline);
+    void *new_target_entry = CodePointToEntryPoint(hook_trampoline);
+    void *new_forward_entry =  CodePointToEntryPoint(target_trampoline);
 
 #elif defined(__aarch64__)
 
     int hook_trampoline_len = 5 * 4;
-    int target_trampoline_len = 7 * 4;
+	int target_trampoline_len = 7 * 4;
 
-    int hook_trampoline_target_index = 12;
-    int target_trampoline_target_index = 12;
-    int target_trampoline_target_entry_index = 20;
+	int hook_trampoline_target_index = 12;
+	int target_trampoline_target_index = 12;
+	int target_trampoline_target_entry_index = 20;
 
-    void *new_target_entry = hook_trampoline;
-    void *new_forward_entry =  target_trampoline;
+	void *new_target_entry = hook_trampoline;
+	void *new_forward_entry =  target_trampoline;
 
 #endif
 
@@ -851,16 +816,16 @@ jint DoReplaceHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hoo
 
 static JNINativeMethod JniMethods[] = {
 
+        {"disableHiddenApiCheck",             "()V",                                                          (void *) DisableHiddenApiCheck},
         {"init",               				  "(I)V",                                                         (void *) Init},
         {"disableJITInline",               	  "()V",                                                          (void *) DisableJITInline},
         {"getMethodEntryPoint",               "(Ljava/lang/reflect/Member;)J",                                (void *) GetMethodEntryPoint},
         {"getQuickToInterpreterBridge",       "(Ljava/lang/Class;Ljava/lang/String;Ljava/lang/String;)J",     (void *) GetQuickToInterpreterBridge},
-        {"comparePointer",            		  "(JJ)Z",                                (void *) ComparePointer},
         {"compileMethod",            		  "(Ljava/lang/reflect/Member;)Z",                                (void *) CompileMethod},
-        {"isCorrectSize",                     "(Ljava/lang/reflect/Member;)Z",                                (void *) IsCorrectSize},
+        {"isCompiled",            		      "(Ljava/lang/reflect/Member;J)Z",                               (void *) IsCompiled},
+        {"doRewriteHookCheck",                "(Ljava/lang/reflect/Member;)Z",                                (void *) DoRewriteHookCheck},
         {"isNativeMethod",                    "(Ljava/lang/reflect/Member;)Z",                                (void *) IsNativeMethod},
-        {"setNativeMethod",                    "(Ljava/lang/reflect/Member;)V",                                (void *) SetNativeMethod},
-        {"isNonPcRelated",                    "(Ljava/lang/reflect/Member;)Z",                                (void *) IsNonPcRelated},
+        {"setNativeMethod",                    "(Ljava/lang/reflect/Member;)V",                               (void *) SetNativeMethod},
         {"checkJitState",                     "(Ljava/lang/reflect/Member;J)I",                               (void *) CheckJitState},
         {"doFullRewriteHook",                 "(Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;JLpers/turing/technician/fasthook/FastHookManager$HookRecord;Lpers/turing/technician/fasthook/FastHookManager$HookRecord;Lpers/turing/technician/fasthook/FastHookManager$HookRecord;)I",
                 (void *) DoFullRewriteHook},
