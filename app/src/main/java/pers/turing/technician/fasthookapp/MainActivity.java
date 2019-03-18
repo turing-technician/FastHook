@@ -2,6 +2,7 @@ package pers.turing.technician.fasthookapp;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.os.Build;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -9,6 +10,9 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 import pers.turing.technician.fasthook.FastHookManager;
 import pers.turing.technician.fasthookapp.hook.Test;
@@ -23,6 +27,7 @@ public class MainActivity extends AppCompatActivity {
     TextView mNativeVirtualText;
     TextView mNativeStaticText;
     TextView mSystemText;
+    TextView mHiddenText;
 
     String mConstructorTextString;
     String mDirectTextString;
@@ -32,6 +37,7 @@ public class MainActivity extends AppCompatActivity {
     String mNativeVirtualTextString;
     String mNativeStaticTextString;
     String mSystemTextString;
+    String mHiddenTextString;
 
     Button mRewriteMode;
     Button mReplaceMode;
@@ -53,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
         mNativeVirtualText = findViewById(R.id.native_virtual_test);
         mNativeStaticText = findViewById(R.id.native_static_test);
         mSystemText = findViewById(R.id.system_test);
+        mHiddenText = findViewById(R.id.hidden_test);
 
         mConstructorTextString = mConstructorText.getText().toString();
         mDirectTextString = mDirectText.getText().toString();
@@ -62,6 +69,13 @@ public class MainActivity extends AppCompatActivity {
         mNativeVirtualTextString = mNativeVirtualText.getText().toString();
         mNativeStaticTextString = mNativeStaticText.getText().toString();
         mSystemTextString = mSystemText.getText().toString();
+        mHiddenTextString = mHiddenText.getText().toString();
+
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            mHiddenText.setVisibility(View.VISIBLE);
+        }else {
+            mHiddenText.setVisibility(View.GONE);
+        }
 
         mRewriteMode = findViewById(R.id.button_rewrite);
         mReplaceMode = findViewById(R.id.button_replace);
@@ -178,6 +192,24 @@ public class MainActivity extends AppCompatActivity {
             mSystemText.setTextColor(Color.GREEN);
         }else {
             mSystemText.setTextColor(Color.RED);
+        }
+
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            FastHookManager.disableHiddenApiCheck();
+            try {
+                Class<?> activityClass = Class.forName("dalvik.system.VMRuntime");
+                Method setHiddenApiExemptions = activityClass.getDeclaredMethod("setHiddenApiExemptions", String[].class);
+                setHiddenApiExemptions.setAccessible(true);
+                mHiddenText.setText(setHiddenApiExemptions.getName());
+            }catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            if(!mHiddenText.getText().equals(mHiddenTextString)) {
+                mHiddenText.setTextColor(Color.GREEN);
+            }else {
+                mHiddenText.setTextColor(Color.RED);
+            }
         }
     }
 }

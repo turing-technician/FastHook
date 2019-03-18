@@ -55,6 +55,12 @@
         android:layout_height="wrap_content"
         android:text="Test SystemMethod" />
 
+    <TextView
+        android:id="@+id/hidden_test"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test HiddenApi" />
+
     <Button
         android:id="@+id/button_rewrite"
         android:layout_width="wrap_content"
