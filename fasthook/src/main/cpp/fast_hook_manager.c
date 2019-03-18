@@ -196,6 +196,56 @@ static inline void InitCompileThread() {
     }
 }
 
+void static inline InitTrampoline(int version) {
+#if defined(__arm__)
+    switch(version) {
+        case kAndroidP:
+            hook_trampoline_[6] = 0x18;
+            break;
+        case kAndroidOMR1:
+        case kAndroidO:
+            hook_trampoline_[6] = 0x1c;
+            break;
+        case kAndroidNMR1:
+        case kAndroidN:
+            hook_trampoline_[6] = 0x20;
+            break;
+        case kAndroidM:
+            hook_trampoline_[6] = 0x24;
+            break;
+        case kAndroidLMR1:
+            hook_trampoline_[6] = 0x2c;
+            break;
+        case kAndroidL:
+            hook_trampoline_[6] = 0x28;
+            break;
+    }
+#elif defined(__aarch64__)
+    switch(version) {
+        case kAndroidP:
+            hook_trampoline_[5] = 0x10;
+            break;
+        case kAndroidOMR1:
+        case kAndroidO:
+            hook_trampoline_[5] = 0x14;
+            break;
+        case kAndroidNMR1:
+        case kAndroidN:
+            hook_trampoline_[5] = 0x18;
+            break;
+        case kAndroidM:
+            hook_trampoline_[5] = 0x18;
+            break;
+        case kAndroidLMR1:
+            hook_trampoline_[5] = 0x1c;
+            break;
+        case kAndroidL:
+            hook_trampoline_[5] = 0x14;
+            break;
+    }
+#endif
+}
+
 void DisableHiddenApiCheck(JNIEnv *env, jclass clazz) {
     if(kHiddenApiPolicyOffset > 0) {
         int no_check = 0;
@@ -260,6 +310,8 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
             kArtMethodQuickCodeOffset = 4 * 2 + 4 * 4 + 8 * 2;
             break;
     }
+
+    InitTrampoline(version);
 
     if(kTLSSlotArtThreadSelf > 0) {
         InitJit();
