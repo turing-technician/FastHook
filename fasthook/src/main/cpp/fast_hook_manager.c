@@ -39,9 +39,6 @@ static inline void InitJit() {
     void *compiler_options = (void *)ReadPointer((unsigned char *)jit_compiler_handle_ + pointer_size_);
     memcpy((unsigned char *)compiler_options + 6 * pointer_size_,&max_units,pointer_size_);
 
-    suspend_all_ = (void (*)())(fake_dlsym(art_lib,"_ZN3art3Dbg9SuspendVMEv"));
-    resume_all_ = (void (*)())(fake_dlsym(art_lib,"_ZN3art3Dbg8ResumeVMEv"));
-
     runtime_ = (void *)ReadPointer((unsigned char *)jvm_ + pointer_size_);
 }
 
@@ -93,37 +90,6 @@ static inline void AddArtMethodAccessFlag(void *art_method, uint32_t flag) {
 
 static inline void *CurrentThread() {
     return __get_tls()[kTLSSlotArtThreadSelf];
-}
-
-static inline void CompileArtMethod(void) {
-    int status;
-    JNIEnv* env = NULL;
-
-    status = (*jvm_)->GetEnv(jvm_,(void**)&env, JNI_VERSION_1_6);
-    if(status < 0) {
-        status = (*jvm_)->AttachCurrentThread(jvm_,&env, NULL);
-        if(!status) {
-            while(1) {
-                if(!compile_param_) {
-                    compile_param_ = (struct CompileParam *)malloc(sizeof(struct CompileParam));
-                    compile_param_->art_method = NULL;
-                    compile_param_->success = -1;
-                }
-                pthread_mutex_lock(&compile_mutex_);
-                pthread_cond_wait(&compile_cond_,&compile_mutex_);
-
-                void *art_method = compile_param_->art_method;
-                void *thread = CurrentThread();
-
-                suspend_all_();
-                compile_param_->success = jit_compile_method_(jit_compiler_handle_, art_method, thread, false);
-                resume_all_();
-
-                pthread_mutex_unlock(&compile_mutex_);
-            }
-            (*jvm_)->DetachCurrentThread(jvm_);
-        }
-    }
 }
 
 static inline void *CreatTrampoline(int type) {
@@ -184,11 +150,7 @@ static inline void *CreatTrampoline(int type) {
 
 void SignalHandle(int signal, siginfo_t *info, void *reserved) {
     ucontext_t* context = (ucontext_t*)reserved;
-#if defined(__arm__)
     void *addr = (void *)context->uc_mcontext.fault_address;
-#elif defined(__aarch64__)
-    void *addr = (void *)context->uc_mcontext.fault_address;
-#endif
 
     if(sigaction_info_->addr == addr) {
         void *target_code = sigaction_info_->addr;
@@ -199,22 +161,6 @@ void SignalHandle(int signal, siginfo_t *info, void *reserved) {
         int ret = mprotect((void *) (target_code - alignment), (size_t) (alignment + len),
                            PROT_READ | PROT_WRITE | PROT_EXEC);
         LOGI("Mprotect:%d Pagesize:%d Alignment:%d",ret,page_size,alignment);
-    }
-}
-
-static inline void InitCompileThread() {
-    int ret = 0;
-
-    pthread_cond_init(&compile_cond_,NULL);
-    pthread_mutex_init(&compile_mutex_,NULL);
-
-    ret = pthread_create(&compile_thread_, NULL, (void  *) CompileArtMethod, NULL);
-    if(ret) {
-        LOGI("Create Thread failed %d",ret);
-        pthread_cond_destroy(&compile_cond_);
-        pthread_mutex_destroy(&compile_mutex_);
-
-        compile_param_ = NULL;
     }
 }
 
@@ -341,7 +287,6 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
 
     if(kTLSSlotArtThreadSelf > 0) {
         InitJit();
-        InitCompileThread();
     }
 
     return ret;
@@ -377,23 +322,12 @@ long GetQuickToInterpreterBridge(JNIEnv *env, jclass clazz, jclass target_class,
 bool CompileMethod(JNIEnv *env, jclass clazz, jobject method) {
     bool ret = false;
 
-    if(compile_param_) {
-        void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
+    void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
+    void *thread = CurrentThread();
+    int old_flag_and_state = ReadInt32(thread);
 
-        compile_param_->art_method = art_method;
-        compile_param_->success = -1;
-
-        pthread_mutex_lock(&compile_mutex_);
-        pthread_cond_signal(&compile_cond_);
-        pthread_mutex_unlock(&compile_mutex_);
-
-        while(compile_param_->success == -1) {
-            usleep(kCompileWaitTime);
-        }
-
-        ret = compile_param_->success;
-        LOGI("CompileMethod:%d NewEntry:%p",ret,GetArtMethodEntryPoint(art_method));
-    }
+    ret = jit_compile_method_(jit_compiler_handle_, art_method, thread, false);
+    memcpy(thread,&old_flag_and_state,4);
 
     return ret;
 }

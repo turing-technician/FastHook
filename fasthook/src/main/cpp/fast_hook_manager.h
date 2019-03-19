@@ -69,11 +69,6 @@ static struct {
 	jfieldID target_trampoline_;
 } kHookRecordClassInfo;
 
-struct CompileParam {
-	void *art_method;
-	int success;
-};
-
 struct SigactionInfo {
     void *addr;
     int len;
@@ -85,12 +80,6 @@ struct SigactionInfo {
 # define __get_tls() ({ void** __val; __asm__("mrc p15, 0, %0, c13, c0, 3" : "=r"(__val)); __val; })
 #endif
 
-pthread_t compile_thread_;
-pthread_cond_t compile_cond_;
-pthread_mutex_t compile_mutex_;
-
-struct CompileParam *compile_param_ = NULL;
-uint32_t kCompileWaitTime = 5000;
 uint32_t kTLSSlotArtThreadSelf = 0;
 
 struct SigactionInfo *sigaction_info_ = NULL;
@@ -104,8 +93,6 @@ void* (*jit_load_)(bool*) = NULL;
 void* jit_compiler_handle_ = NULL;
 bool (*jit_compile_method_)(void*, void*, void*, bool) = NULL;
 void** art_jit_compiler_handle_ = NULL;
-void (*suspend_all_)() = NULL;
-void (*resume_all_)() = NULL;
 
 uint32_t pointer_size_ = 0;
 
