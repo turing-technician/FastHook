@@ -6,6 +6,8 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
+#include <ucontext.h>
 
 #include "fake_dlfcn.h"
 #include "fast_hook_manager.h"
@@ -40,7 +42,7 @@ static inline void InitJit() {
     suspend_all_ = (void (*)())(fake_dlsym(art_lib,"_ZN3art3Dbg9SuspendVMEv"));
     resume_all_ = (void (*)())(fake_dlsym(art_lib,"_ZN3art3Dbg8ResumeVMEv"));
 
-    runtime_ = (void *)ReadPointer(fake_dlsym(art_lib, "_ZN3art7Runtime9instance_E"));
+    runtime_ = (void *)ReadPointer((unsigned char *)jvm_ + pointer_size_);
 }
 
 static inline void *EntryPointToCodePoint(void *entry_point) {
@@ -180,6 +182,26 @@ static inline void *CreatTrampoline(int type) {
     return trampoline;
 }
 
+void SignalHandle(int signal, siginfo_t *info, void *reserved) {
+    ucontext_t* context = (ucontext_t*)reserved;
+#if defined(__arm__)
+    void *addr = (void *)context->uc_mcontext.fault_address;
+#elif defined(__aarch64__)
+    void *addr = (void *)context->uc_mcontext.fault_address;
+#endif
+
+    if(sigaction_info_->addr == addr) {
+        void *target_code = sigaction_info_->addr;
+        int len = sigaction_info_->len;
+
+        long page_size = sysconf(_SC_PAGESIZE);
+        unsigned alignment = (unsigned)((unsigned long long)target_code % page_size);
+        int ret = mprotect((void *) (target_code - alignment), (size_t) (alignment + len),
+                           PROT_READ | PROT_WRITE | PROT_EXEC);
+        LOGI("Mprotect:%d Pagesize:%d Alignment:%d",ret,page_size,alignment);
+    }
+}
+
 static inline void InitCompileThread() {
     int ret = 0;
 
@@ -312,6 +334,10 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
     }
 
     InitTrampoline(version);
+
+    sigaction_info_ = (struct SigactionInfo *)malloc(sizeof(struct SigactionInfo));
+    sigaction_info_->addr = NULL;
+    sigaction_info_->len = 0;
 
     if(kTLSSlotArtThreadSelf > 0) {
         InitJit();
@@ -634,17 +660,32 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
         __builtin___clear_cache(quick_target_trampoline, quick_target_trampoline + quick_target_trampoline_len);
     }
 
-    long page_size = sysconf(_SC_PAGESIZE);
-    unsigned alignment = (unsigned)((unsigned long long)target_code % page_size);
-    int ret = mprotect((void *) (target_code - alignment), (size_t) (alignment + original_prologue_len),
-                       PROT_READ | PROT_WRITE | PROT_EXEC);
-    LOGI("Mprotect:%d Pagesize:%d Alignment:%d",ret,page_size,alignment);
+    sigaction_info_->addr = target_code;
+    sigaction_info_->len = original_prologue_len;
+    if(current_handler_ == NULL) {
+        default_handler_ = (struct sigaction *)malloc(sizeof(struct sigaction));
+        current_handler_ = (struct sigaction *)malloc(sizeof(struct sigaction));
+        memset(default_handler_, 0, sizeof(sigaction));
+        memset(current_handler_, 0, sizeof(sigaction));
+
+        current_handler_->sa_sigaction = SignalHandle;
+        current_handler_->sa_flags = SA_SIGINFO;
+
+        sigaction(SIGSEGV, current_handler_, default_handler_);
+    }else {
+        sigaction(SIGSEGV, current_handler_, NULL);
+    }
 
     memcpy((unsigned char *) art_target_method + kArtMethodQuickCodeOffset,&quick_to_interpreter_bridge,pointer_size_);
     memcpy(target_code, jump_trampoline, jump_trampoline_len);
     for(int i = 0;i < jump_trampoline_len/4;i++) {
         LOGI("TargetCode[%d] %x %x %x %x",i,((unsigned char *)target_code)[i*4+0],((unsigned char *)target_code)[i*4+1],((unsigned char *)target_code)[i*4+2],((unsigned char *)target_code)[i*4+3]);
     }
+
+    sigaction_info_->addr = NULL;
+    sigaction_info_->len = 0;
+    sigaction(SIGSEGV, default_handler_, NULL);
+
     memcpy((unsigned char *) art_target_method + kArtMethodQuickCodeOffset,&target_entry,pointer_size_);
 
     __builtin___clear_cache(target_code, target_code + jump_trampoline_len);

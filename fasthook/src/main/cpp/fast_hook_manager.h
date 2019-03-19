@@ -74,6 +74,11 @@ struct CompileParam {
 	int success;
 };
 
+struct SigactionInfo {
+    void *addr;
+    int len;
+};
+
 #if defined(__aarch64__)
 # define __get_tls() ({ void** __val; __asm__("mrs %0, tpidr_el0" : "=r"(__val)); __val; })
 #elif defined(__arm__)
@@ -84,9 +89,13 @@ pthread_t compile_thread_;
 pthread_cond_t compile_cond_;
 pthread_mutex_t compile_mutex_;
 
-struct CompileParam *compile_param_;
+struct CompileParam *compile_param_ = NULL;
 uint32_t kCompileWaitTime = 5000;
 uint32_t kTLSSlotArtThreadSelf = 0;
+
+struct SigactionInfo *sigaction_info_ = NULL;
+struct sigaction *default_handler_ = NULL;
+struct sigaction *current_handler_ = NULL;
 
 JavaVM *jvm_ = NULL;
 void *runtime_ = NULL;
