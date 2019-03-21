@@ -1,6 +1,6 @@
 # FastHook
 一种高效稳定、简洁易用的Android Hook框架，**实际项目验证，拥有远超其他同类框架的优异稳定性**。
-实现原理，请参考**[FastHook](https://www.jianshu.com/p/d2a8aa249134)**
+实现原理，请参考[FastHook](https://www.jianshu.com/p/d2a8aa249134)
 # 使用
 提供一个Hook信息类，可以是任意类，但是必须定义有**static String[] HOOK_ITEMS**；例如
 HookInfo.java
@@ -46,7 +46,7 @@ FastHookManger.doHook("hookInfoClassName",null,null,null,null,false);
 FastHookManger.doHook("hookInfoClassName",pluginsClassloader,apkClassLoader,pluginsClassloader,pluginsClassloader,false);
 ```
 # 支持Android版本
-- Android 9.0（API 28）
+- Android 9.0 (API 28)
 - Android 8.1 (API 27)
 - Android 8.0 (API 26)
 - Android 7.1 (API 25)
@@ -58,5 +58,5 @@ FastHookManger.doHook("hookInfoClassName",pluginsClassloader,apkClassLoader,plug
 - Thumb2
 - Arm64
 # 参考
-**[VirtualFastHook](https://github.com/turing-technician/VirtualFastHook)**：结合VirtualApp的免root Hook工具。
-**[Enhanced_dlfunctions](https://github.com/turing-technician/Enhanced_dlfunctions)**：增强版本的dl函数，支持获取所有符号，包括.dynsym段和.symtab段
+1. **[VirtualFastHook](https://github.com/turing-technician/VirtualFastHook)**：结合VirtualApp的免root Hook工具。
+2. **[Enhanced_dlfunctions](https://github.com/turing-technician/Enhanced_dlfunctions)**：增强版本的dl函数，支持获取所有符号，包括.dynsym段和.symtab段

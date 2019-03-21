@@ -329,8 +329,9 @@ bool IsCompiled(JNIEnv *env, jclass clazz, jobject method) {
 
     void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
     void *method_entry = (void *)ReadPointer((unsigned char *)art_method + kArtMethodQuickCodeOffset);
+    int hotness_count = GetArtMethodHotnessCount(art_method);
 
-    if(method_entry != art_quick_to_interpreter_bridge_)
+    if(method_entry != art_quick_to_interpreter_bridge_ && hotness_count < kHotMethodThreshold)
         ret = true;
 
     LOGI("IsCompiled:%d",ret);
