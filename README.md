@@ -1,4 +1,4 @@
-[中文文档](https://www.jianshu.com/p/d2a8aa249134)
+[中文文档](https://github.com/turing-technician/FastHook/blob/master/README_CN.md)
 # FastHook
 Android ART Hook
 # Supports
