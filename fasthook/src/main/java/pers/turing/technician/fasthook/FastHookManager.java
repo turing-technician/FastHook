@@ -53,9 +53,6 @@ public class FastHookManager {
     private final static String HOOK_ITEMS = "HOOK_ITEMS";
     private final static int HOOK_ITEM_SIZE = 10;
     private final static int HOOK_MODE_SIZE = 1;
-    private final static String HOOK_QUICK_TO_INTERPRETER_BRIDGE_CLASS = "pers.turing.technician.fasthook.FastHookManager";
-    private final static String HOOK_QUICK_TO_INTERPRETER_BRIDGE_METHOD = "<clinit>";
-    private final static String HOOK_QUICK_TO_INTERPRETER_BRIDGE_METHOD_SIG = "()V";
 
     private final static String CONSTRUCTOR = "<init>";
 
@@ -164,7 +161,7 @@ public class FastHookManager {
                     long prevQuickHookTrampoline = prevRecord.mQuickHookTrampoline;
                     HookRecord targetRecord = new HookRecord(TYPE_RECORD_REWRITE, targetMethod, hookMethod, forwardMethod, 0, 0, 1, quickTrampolineList);
 
-                    doPartRewriteHook(targetMethod,hookMethod,forwardMethod,getQuickToInterpreterBridge(),quickOriginalTrampoline,prevQuickHookTrampoline,targetRecord);
+                    doPartRewriteHook(targetMethod,hookMethod,forwardMethod,quickOriginalTrampoline,prevQuickHookTrampoline,targetRecord);
                     Logd("QuickHookTrampoline:0x"+Long.toHexString(targetRecord.mQuickHookTrampoline)+" QuickTargetTrampoline:0x"+Long.toHexString(targetRecord.mQuickTargetTrampoline));
 
                     quickTrampolineList.add(quickTrampolineList.size() - 1,targetRecord);
@@ -173,7 +170,7 @@ public class FastHookManager {
                     mHookMap.put(targetMethod,targetRecord);
                 }else {
                     if(Build.VERSION.SDK_INT < ANDROID_N) {
-                        boolean success = isCompiled(targetMethod,getQuickToInterpreterBridge());
+                        boolean success = isCompiled(targetMethod);
                         if(success) {
                             success = doRewriteHookCheck(targetMethod);
                         }
@@ -184,7 +181,7 @@ public class FastHookManager {
                             doReplaceHookInternal(targetMethod,hookMethod,forwardMethod,isNative);
                         }
                     }else {
-                        int jitState = checkJitState(targetMethod,getQuickToInterpreterBridge());
+                        int jitState = checkJitState(targetMethod);
                         Logd("jitState:"+jitState);
 
                         switch (jitState) {
@@ -198,7 +195,7 @@ public class FastHookManager {
                             case JIT_NONE:
                             case JIT_COMPILE:
                                 boolean success = true;
-                                boolean needCompile = !isCompiled(targetMethod,getQuickToInterpreterBridge());
+                                boolean needCompile = !isCompiled(targetMethod);
 
                                 if(jitState == JIT_NONE && needCompile) {
                                     success = compileMethod(targetMethod);
@@ -230,7 +227,7 @@ public class FastHookManager {
                 if(Build.VERSION.SDK_INT < ANDROID_N) {
                     doReplaceHookInternal(targetMethod,hookMethod,forwardMethod,isNative);
                 }else {
-                    int jitState = checkJitState(targetMethod,getQuickToInterpreterBridge());
+                    int jitState = checkJitState(targetMethod);
                     Logd("jitState:"+jitState);
 
                     switch (jitState) {
@@ -264,7 +261,7 @@ public class FastHookManager {
         HookRecord targetRecord = new HookRecord(TYPE_RECORD_REWRITE, targetMethod, hookMethod, forwardMethod, 0, 0, 1, newQuickTrampolineList);
         HookRecord tailRecord = new HookRecord(TYPE_RECORD_REWRITE_TAIL, 0, 2, newQuickTrampolineList);
 
-        doFullRewriteHook(targetMethod, hookMethod, forwardMethod, getQuickToInterpreterBridge(), headRecord, targetRecord, tailRecord);
+        doFullRewriteHook(targetMethod, hookMethod, forwardMethod, headRecord, targetRecord, tailRecord);
         Logd("JumpTrampoline:0x"+Long.toHexString(headRecord.mJumpTrampoline)+" QuickHookTrampoline:0x"+Long.toHexString(targetRecord.mQuickHookTrampoline)+" QuickTargetTrampoline:0x"+Long.toHexString(targetRecord.mQuickTargetTrampoline)+" QuickOriginalTrampoline:0x"+Long.toHexString(tailRecord.mQuickOriginalTrampoline));
 
         newQuickTrampolineList.add(headRecord);
@@ -278,11 +275,7 @@ public class FastHookManager {
     private static void doReplaceHookInternal(Member targetMethod, Member hookMethod, Member forwardMethod, boolean isNative) {
         HookRecord targetRecord = new HookRecord(TYPE_RECORD_REPLACE,targetMethod,hookMethod,forwardMethod,0,0);
 
-        if(isNative) {
-            doReplaceHook(targetMethod,hookMethod,forwardMethod,getMethodEntryPoint(targetMethod),targetRecord);
-        }else {
-            doReplaceHook(targetMethod,hookMethod,forwardMethod,getQuickToInterpreterBridge(),targetRecord);
-        }
+        doReplaceHook(targetMethod,hookMethod,forwardMethod,isNative,targetRecord);
         Logd("QuickHookTrampoline:0x"+Long.toHexString(targetRecord.mHookTrampoline)+" QuickTargetTrampoline:0x"+Long.toHexString(targetRecord.mTargetTrampoline));
 
         mHookMap.put(targetMethod,targetRecord);
@@ -440,19 +433,6 @@ public class FastHookManager {
         return arrayClassBuilder.toString();
     }
 
-    private static long getQuickToInterpreterBridge() {
-        if(mQuickToInterpreterBridge != 0)
-            return mQuickToInterpreterBridge;
-
-        try {
-            mQuickToInterpreterBridge = getQuickToInterpreterBridge(Class.forName(HOOK_QUICK_TO_INTERPRETER_BRIDGE_CLASS),HOOK_QUICK_TO_INTERPRETER_BRIDGE_METHOD,HOOK_QUICK_TO_INTERPRETER_BRIDGE_METHOD_SIG);
-            Logd("QuickToInterpreterBridge:0x"+Long.toHexString(mQuickToInterpreterBridge));
-        }catch(Exception e) {
-            e.printStackTrace();
-        }
-        return mQuickToInterpreterBridge;
-    }
-
     private static class HookRecord {
         public int mType;
         public Member mTargetMethod;
@@ -560,12 +540,12 @@ public class FastHookManager {
     private native static long getMethodEntryPoint(Member method);
     private native static boolean compileMethod(Member method);
     private native static long getQuickToInterpreterBridge(Class targetClass, String methodName, String methodSig);
-    private native static boolean isCompiled(Member method, long quickToInterpreterBridge);
+    private native static boolean isCompiled(Member method);
     private native static boolean doRewriteHookCheck(Member method);
     private native static boolean isNativeMethod(Member method);
     private native static void setNativeMethod(Member method);
-    private native static int checkJitState(Member method, long quickToInterpreterBridge);
-    private native static int doFullRewriteHook(Member targetMethod, Member hookMethod, Member forwardMethod, long quickToInterpreterBridge, HookRecord headRecord, HookRecord targetRecord, HookRecord tailRecord);
-    private native static int doPartRewriteHook(Member targetMethod, Member hookMethod, Member forwardMethod, long quickToInterpreterBridge, long quickOriginalTrampoline, long prevQuickHookTrampoline, HookRecord targetRecord);
-    private native static int doReplaceHook(Member targetMethod, Member hookMethod, Member forwardMethod, long quickToInterpreterBridge, HookRecord targetRecord);
+    private native static int checkJitState(Member method);
+    private native static int doFullRewriteHook(Member targetMethod, Member hookMethod, Member forwardMethod, HookRecord headRecord, HookRecord targetRecord, HookRecord tailRecord);
+    private native static int doPartRewriteHook(Member targetMethod, Member hookMethod, Member forwardMethod, long quickOriginalTrampoline, long prevQuickHookTrampoline, HookRecord targetRecord);
+    private native static int doReplaceHook(Member targetMethod, Member hookMethod, Member forwardMethod, boolean isNative, HookRecord targetRecord);
 }

@@ -93,6 +93,7 @@ void* (*jit_load_)(bool*) = NULL;
 void* jit_compiler_handle_ = NULL;
 bool (*jit_compile_method_)(void*, void*, void*, bool) = NULL;
 void** art_jit_compiler_handle_ = NULL;
+void *art_quick_to_interpreter_bridge_ = NULL;
 
 uint32_t pointer_size_ = 0;
 

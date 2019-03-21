@@ -40,6 +40,8 @@ static inline void InitJit() {
     memcpy((unsigned char *)compiler_options + 6 * pointer_size_,&max_units,pointer_size_);
 
     runtime_ = (void *)ReadPointer((unsigned char *)jvm_ + pointer_size_);
+
+    art_quick_to_interpreter_bridge_ = enhanced_dlsym(art_lib, "art_quick_to_interpreter_bridge");
 }
 
 static inline void *EntryPointToCodePoint(void *entry_point) {
@@ -309,16 +311,6 @@ long GetMethodEntryPoint(JNIEnv *env, jclass clazz, jobject method) {
     return entry_point;
 }
 
-long GetQuickToInterpreterBridge(JNIEnv *env, jclass clazz, jclass target_class, jstring method_name, jstring method_sig) {
-    const char *method_name_c = (*env)->GetStringUTFChars(env, method_name, NULL);
-    const char *method_sig_c = (*env)->GetStringUTFChars(env, method_sig, NULL);
-
-    void *art_method = (void *)(*env)->GetStaticMethodID(env, target_class, method_name_c, method_sig_c);
-    long entry_point = ReadPointer((unsigned char *)art_method + kArtMethodQuickCodeOffset);
-
-    return entry_point;
-}
-
 bool CompileMethod(JNIEnv *env, jclass clazz, jobject method) {
     bool ret = false;
 
@@ -332,13 +324,13 @@ bool CompileMethod(JNIEnv *env, jclass clazz, jobject method) {
     return ret;
 }
 
-bool IsCompiled(JNIEnv *env, jclass clazz, jobject method, jlong quick_to_interpreter_bridge) {
+bool IsCompiled(JNIEnv *env, jclass clazz, jobject method) {
     bool ret = false;
 
     void *art_method = (void *)(*env)->FromReflectedMethod(env, method);
     void *method_entry = (void *)ReadPointer((unsigned char *)art_method + kArtMethodQuickCodeOffset);
 
-    if(method_entry != (void *)quick_to_interpreter_bridge)
+    if(method_entry != art_quick_to_interpreter_bridge_)
         ret = true;
 
     LOGI("IsCompiled:%d",ret);
@@ -412,17 +404,17 @@ void SetNativeMethod(JNIEnv *env, jclass clazz, jobject method) {
     AddArtMethodAccessFlag(art_method,kAccNative);
 }
 
-int CheckJitState(JNIEnv *env, jclass clazz, jobject target_method, jlong quick_to_interpreter_bridge) {
+int CheckJitState(JNIEnv *env, jclass clazz, jobject target_method) {
     void *art_method = (void *)(*env)->FromReflectedMethod(env, target_method);
 
     AddArtMethodAccessFlag(art_method, kAccCompileDontBother);
 
     uint32_t hotness_count = GetArtMethodHotnessCount(art_method);
 
-    LOGI("TargetMethod:%p QuickToInterpreterBridge:%p hotness_count:%hd",art_method,quick_to_interpreter_bridge,hotness_count);
+    LOGI("TargetMethod:%p QuickToInterpreterBridge:%p hotness_count:%hd",art_method,art_quick_to_interpreter_bridge_,hotness_count);
     if(hotness_count >= kHotMethodThreshold) {
         long entry_point = (long)GetArtMethodEntryPoint(art_method);
-        if(entry_point == quick_to_interpreter_bridge) {
+        if((void *)entry_point == art_quick_to_interpreter_bridge_) {
             void *profiling = GetArtMethodProfilingInfo(art_method);
             void *save_entry_point = GetProfilingSaveEntryPoint(profiling);
             if(save_entry_point) {
@@ -448,7 +440,7 @@ int CheckJitState(JNIEnv *env, jclass clazz, jobject target_method, jlong quick_
     return kNone;
 }
 
-jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hook_method, jobject forward_method, jlong quick_to_interpreter_bridge, jobject head_record, jobject target_record, jobject tail_record) {
+jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hook_method, jobject forward_method, jobject head_record, jobject target_record, jobject tail_record) {
     void *art_target_method = (void *)(*env)->FromReflectedMethod(env, target_method);
     void *art_hook_method = (void *)(*env)->FromReflectedMethod(env, hook_method);
     void *art_forward_method = NULL;
@@ -610,7 +602,7 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
         sigaction(SIGSEGV, current_handler_, NULL);
     }
 
-    memcpy((unsigned char *) art_target_method + kArtMethodQuickCodeOffset,&quick_to_interpreter_bridge,pointer_size_);
+    memcpy((unsigned char *) art_target_method + kArtMethodQuickCodeOffset,&art_quick_to_interpreter_bridge_,pointer_size_);
     memcpy(target_code, jump_trampoline, jump_trampoline_len);
     for(int i = 0;i < jump_trampoline_len/4;i++) {
         LOGI("TargetCode[%d] %x %x %x %x",i,((unsigned char *)target_code)[i*4+0],((unsigned char *)target_code)[i*4+1],((unsigned char *)target_code)[i*4+2],((unsigned char *)target_code)[i*4+3]);
@@ -634,7 +626,7 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
     return 0;
 }
 
-jint DoPartRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hook_method, jobject forward_method, jlong quick_to_interpreter_bridge, jlong quick_original_trampoline, jlong prev_quick_hook_trampoline, jobject target_record) {
+jint DoPartRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hook_method, jobject forward_method, jlong quick_original_trampoline, jlong prev_quick_hook_trampoline, jobject target_record) {
     void *art_target_method = (void *)(*env)->FromReflectedMethod(env, target_method);
     void *art_hook_method = (void *)(*env)->FromReflectedMethod(env, hook_method);
     void *art_forward_method = NULL;
@@ -731,7 +723,7 @@ jint DoPartRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
         __builtin___clear_cache(quick_target_trampoline, quick_target_trampoline + quick_target_trampoline_len);
     }
 
-    memcpy((char *) art_target_method + kArtMethodQuickCodeOffset,&quick_to_interpreter_bridge,pointer_size_);
+    memcpy((char *) art_target_method + kArtMethodQuickCodeOffset,&art_quick_to_interpreter_bridge_,pointer_size_);
     memcpy((void *)(prev_quick_hook_trampoline + quick_hook_trampoline_next_entry_index), &prev_next_entry, pointer_size_);
     for(int i = 0;i < quick_hook_trampoline_len/4;i++) {
         LOGI("PrevQuickHookTrampoline[%d] %x %x %x %x",i,((unsigned char*)prev_quick_hook_trampoline)[i*4+0],((unsigned char*)prev_quick_hook_trampoline)[i*4+1],((unsigned char*)prev_quick_hook_trampoline)[i*4+2],((unsigned char*)prev_quick_hook_trampoline)[i*4+3]);
@@ -748,12 +740,19 @@ jint DoPartRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
     return 0;
 }
 
-jint DoReplaceHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hook_method, jobject forward_method, jlong quick_to_interpreter_bridge, jobject target_record) {
+jint DoReplaceHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hook_method, jobject forward_method, jboolean is_native, jobject target_record) {
     void *art_target_method = (void *)(*env)->FromReflectedMethod(env, target_method);
     void *art_hook_method = (void *)(*env)->FromReflectedMethod(env, hook_method);
     void *art_forward_method = NULL;
     if(forward_method != NULL) {
         art_forward_method = (void *)(*env)->FromReflectedMethod(env, forward_method);
+    }
+
+    void *target_entry = NULL;
+    if(is_native) {
+        target_entry = GetArtMethodEntryPoint(art_target_method);
+    }else {
+        target_entry = art_quick_to_interpreter_bridge_;
     }
 
     void *hook_trampoline = CreatTrampoline(kHookTrampoline);
@@ -794,16 +793,16 @@ jint DoReplaceHook(JNIEnv *env, jclass clazz, jobject target_method, jobject hoo
 
     if(art_forward_method) {
         memcpy((unsigned char *) target_trampoline + hook_trampoline_target_index, &art_target_method, pointer_size_);
-        memcpy((unsigned char *) target_trampoline + target_trampoline_target_entry_index, &quick_to_interpreter_bridge, pointer_size_);
+        memcpy((unsigned char *) target_trampoline + target_trampoline_target_entry_index, &target_entry, pointer_size_);
 
         if(kTLSSlotArtThreadSelf) {
             uint32_t hotness_count = GetArtMethodHotnessCount(art_target_method);
-            LOGI("TargetTrampoline:%p TargetMethod:%p QuickToInterpreterBridge:%p",target_trampoline,art_target_method,quick_to_interpreter_bridge);
+            LOGI("TargetTrampoline:%p TargetMethod:%p QuickToInterpreterBridge:%p",target_trampoline,art_target_method,art_quick_to_interpreter_bridge_);
             if(hotness_count >= kHotMethodThreshold) {
                 void *profiling = GetArtMethodProfilingInfo(art_target_method);
                 void *save_entry_point = GetProfilingSaveEntryPoint(profiling);
                 if(save_entry_point) {
-                    SetProfilingSaveEntryPoint(profiling,(void *)quick_to_interpreter_bridge);
+                    SetProfilingSaveEntryPoint(profiling,art_quick_to_interpreter_bridge_);
                 }
             }
 
@@ -847,18 +846,17 @@ static JNINativeMethod JniMethods[] = {
         {"init",               				  "(I)V",                                                         (void *) Init},
         {"disableJITInline",               	  "()V",                                                          (void *) DisableJITInline},
         {"getMethodEntryPoint",               "(Ljava/lang/reflect/Member;)J",                                (void *) GetMethodEntryPoint},
-        {"getQuickToInterpreterBridge",       "(Ljava/lang/Class;Ljava/lang/String;Ljava/lang/String;)J",     (void *) GetQuickToInterpreterBridge},
         {"compileMethod",            		  "(Ljava/lang/reflect/Member;)Z",                                (void *) CompileMethod},
-        {"isCompiled",            		      "(Ljava/lang/reflect/Member;J)Z",                               (void *) IsCompiled},
+        {"isCompiled",            		      "(Ljava/lang/reflect/Member;)Z",                               (void *) IsCompiled},
         {"doRewriteHookCheck",                "(Ljava/lang/reflect/Member;)Z",                                (void *) DoRewriteHookCheck},
         {"isNativeMethod",                    "(Ljava/lang/reflect/Member;)Z",                                (void *) IsNativeMethod},
         {"setNativeMethod",                    "(Ljava/lang/reflect/Member;)V",                               (void *) SetNativeMethod},
-        {"checkJitState",                     "(Ljava/lang/reflect/Member;J)I",                               (void *) CheckJitState},
-        {"doFullRewriteHook",                 "(Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;JLpers/turing/technician/fasthook/FastHookManager$HookRecord;Lpers/turing/technician/fasthook/FastHookManager$HookRecord;Lpers/turing/technician/fasthook/FastHookManager$HookRecord;)I",
+        {"checkJitState",                     "(Ljava/lang/reflect/Member;)I",                               (void *) CheckJitState},
+        {"doFullRewriteHook",                 "(Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Lpers/turing/technician/fasthook/FastHookManager$HookRecord;Lpers/turing/technician/fasthook/FastHookManager$HookRecord;Lpers/turing/technician/fasthook/FastHookManager$HookRecord;)I",
                 (void *) DoFullRewriteHook},
-        {"doPartRewriteHook",                 "(Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;JJJLpers/turing/technician/fasthook/FastHookManager$HookRecord;)I",
+        {"doPartRewriteHook",                 "(Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;JJLpers/turing/technician/fasthook/FastHookManager$HookRecord;)I",
                 (void *) DoPartRewriteHook},
-        {"doReplaceHook",                     "(Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;JLpers/turing/technician/fasthook/FastHookManager$HookRecord;)I",
+        {"doReplaceHook",                     "(Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;Ljava/lang/reflect/Member;ZLpers/turing/technician/fasthook/FastHookManager$HookRecord;)I",
                 (void *) DoReplaceHook}
 };
 
