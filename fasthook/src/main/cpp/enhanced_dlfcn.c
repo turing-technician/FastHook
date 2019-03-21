@@ -23,7 +23,7 @@
 #include <sys/mman.h>
 #include <elf.h>
 #include <android/log.h>
-#include "fake_dlfcn.h"
+#include "enhanced_dlfcn.h"
 
 #define TAG_NAME	"FastHookManager"
 
@@ -45,22 +45,27 @@
 #define Elf_Shdr Elf64_Shdr
 #define Elf_Sym  Elf64_Sym
 #else
-#error "Arch unknown, please port me" 
+#error "Arch unknown, please port me"
 #endif
 
 struct ctx {
-    void *load_addr;
-    void *dynstr;
-    void *dynsym;	
-    int nsyms;
-    off_t bias;
+	void *load_addr;
+	void *dynstr;
+	void *dynsym;
+	int dynsym_num;
+	void *strtab;
+	void *symtab;
+	int symtab_num;
+	off_t bias;
 };
 
-int fake_dlclose(void *handle) {
+int enhanced_dlclose(void *handle) {
 	if (handle) {
 		struct ctx *ctx = (struct ctx *) handle;
 		if (ctx->dynsym) free(ctx->dynsym);    /* we're saving dynsym and dynstr */
 		if (ctx->dynstr) free(ctx->dynstr);    /* from library file just in case */
+		if (ctx->symtab) free(ctx->symtab);
+		if (ctx->strtab) free(ctx->strtab);
 		free(ctx);
 	}
 	return 0;
@@ -68,7 +73,7 @@ int fake_dlclose(void *handle) {
 
 /* flags are ignored */
 
-void *fake_dlopen(const char *libpath, int flags) {
+void *enhanced_dlopen(const char *libpath, int flags) {
 	FILE *maps;
 	char buff[256];
 	struct ctx *ctx = 0;
@@ -114,10 +119,14 @@ void *fake_dlopen(const char *libpath, int flags) {
 	ctx->load_addr = (void *) load_addr;
 	shoff = ((void *) elf) + elf->e_shoff;
 
+	Elf_Shdr *shstrtab = (Elf_Shdr *)(shoff + elf->e_shstrndx * elf->e_shentsize);
+	char * shstr = malloc(shstrtab->sh_size);
+	memcpy(shstr, ((void *) elf) + shstrtab->sh_offset, shstrtab->sh_size);
+
 	for (k = 0; k < elf->e_shnum; k++, shoff += elf->e_shentsize) {
 
 		Elf_Shdr *sh = (Elf_Shdr *) shoff;
-		log_dbg("%s: k=%d shdr=%p type=%x", __func__, k, sh, sh->sh_type);
+		log_dbg("%s: k=%d shdr=%p type=%d", __func__, k, sh, sh->sh_type);
 
 		switch (sh->sh_type) {
 
@@ -126,21 +135,36 @@ void *fake_dlopen(const char *libpath, int flags) {
 				ctx->dynsym = malloc(sh->sh_size);
 				if (!ctx->dynsym) fatal("%s: no memory for .dynsym", libpath);
 				memcpy(ctx->dynsym, ((void *) elf) + sh->sh_offset, sh->sh_size);
-				ctx->nsyms = (sh->sh_size / sizeof(Elf_Sym));
+				ctx->dynsym_num = (sh->sh_size / sizeof(Elf_Sym));
+				break;
+
+			case SHT_SYMTAB:
+				if (ctx->symtab) fatal("%s: duplicate SYMTAB sections", libpath); /* .symtab */
+				ctx->symtab = malloc(sh->sh_size);
+				if (!ctx->symtab) fatal("%s: no memory for .symtab", libpath);
+				memcpy(ctx->symtab, ((void *) elf) + sh->sh_offset, sh->sh_size);
+				ctx->symtab_num = (sh->sh_size / sizeof(Elf_Sym));
 				break;
 
 			case SHT_STRTAB:
-				if (ctx->dynstr) break;    /* .dynstr is guaranteed to be the first STRTAB */
-				ctx->dynstr = malloc(sh->sh_size);
-				if (!ctx->dynstr) fatal("%s: no memory for .dynstr", libpath);
-				memcpy(ctx->dynstr, ((void *) elf) + sh->sh_offset, sh->sh_size);
+				if(!strcmp(shstr+sh->sh_name,".dynstr")) {
+					if (ctx->dynstr) break;    /* .dynstr is guaranteed to be the first STRTAB */
+					ctx->dynstr = malloc(sh->sh_size);
+					if (!ctx->dynstr) fatal("%s: no memory for .dynstr", libpath);
+					memcpy(ctx->dynstr, ((void *) elf) + sh->sh_offset, sh->sh_size);
+				}else if(!strcmp(shstr+sh->sh_name,".strtab")) {
+					if (ctx->strtab) break;
+					ctx->strtab = malloc(sh->sh_size);
+					if (!ctx->strtab) fatal("%s: no memory for .strtab", libpath);
+					memcpy(ctx->strtab, ((void *) elf) + sh->sh_offset, sh->sh_size);
+				}
 				break;
 
 			case SHT_PROGBITS:
-				if (!ctx->dynstr || !ctx->dynsym) break;
+				if (!ctx->dynstr || !ctx->dynsym || ctx->bias) break;
 				/* won't even bother checking against the section name */
 				ctx->bias = (off_t) sh->sh_addr - (off_t) sh->sh_offset;
-				k = elf->e_shnum;  /* exit for */
+				//k = elf->e_shnum;  /* exit for */
 				break;
 		}
 	}
@@ -152,30 +176,46 @@ void *fake_dlopen(const char *libpath, int flags) {
 
 #undef fatal
 
-	log_dbg("%s: ok, dynsym = %p, dynstr = %p", libpath, ctx->dynsym, ctx->dynstr);
+	log_dbg("%s: ok, dynsym = %p, dynstr = %p symtab = %p strtab = %p", libpath, ctx->dynsym, ctx->dynstr, ctx->symtab, ctx->strtab);
 
 	return ctx;
 
 	err_exit:
 	if (fd >= 0) close(fd);
 	if (elf != MAP_FAILED) munmap(elf, size);
-	fake_dlclose(ctx);
+	enhanced_dlclose(ctx);
 	return 0;
 }
 
-void *fake_dlsym(void *handle, const char *name) {
+void *enhanced_dlsym(void *handle, const char *name) {
 	int k;
 	struct ctx *ctx = (struct ctx *) handle;
-	Elf_Sym *sym = (Elf_Sym *) ctx->dynsym;
-	char *strings = (char *) ctx->dynstr;
+	Elf_Sym *dynsym = (Elf_Sym *) ctx->dynsym;
+	Elf_Sym *symtab = (Elf_Sym *) ctx->symtab;
+	char *dynstr = (char *) ctx->dynstr;
+	char *strtab = (char *) ctx->strtab;
 
-	for (k = 0; k < ctx->nsyms; k++, sym++)
-		if (strcmp(strings + sym->st_name, name) == 0) {
+	for (k = 0; k < ctx->dynsym_num; k++, dynsym++) {
+		if (strcmp(dynstr + dynsym->st_name, name) == 0) {
 			/*  NB: sym->st_value is an offset into the section for relocatables,
             but a VMA for shared libs or exe files, so we have to subtract the bias */
-			void *ret = ctx->load_addr + sym->st_value - ctx->bias;
+			void *ret = ctx->load_addr + dynsym->st_value - ctx->bias;
 			log_info("%s found at %p", name, ret);
 			return ret;
 		}
+	}
+
+	if(symtab) {
+		for (k = 0; k < ctx->symtab_num; k++, symtab++) {
+			//log_info("%s found %u %s at %d", name, sym_tab->st_name,strings + sym_tab->st_name,k);
+			if (strcmp(strtab + symtab->st_name, name) == 0) {
+				/*  NB: sym->st_value is an offset into the section for relocatables,
+                but a VMA for shared libs or exe files, so we have to subtract the bias */
+				void *ret = ctx->load_addr + symtab->st_value - ctx->bias;
+				log_info("%s found at %p", name, ret);
+				return ret;
+			}
+		}
+	}
 	return 0;
 }

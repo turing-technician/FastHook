@@ -17,7 +17,7 @@ add_library( # Sets the name of the library.
              SHARED
 
              # Provides a relative path to your source file(s).
-             src/main/cpp/fake_dlfcn.c src/main/cpp/fast_hook_manager.c )
+             src/main/cpp/enhanced_dlfcn.c src/main/cpp/fast_hook_manager.c )
 
 # Searches for a specified prebuilt library and stores the path as a
 # variable. Because CMake includes system libraries in the search path by

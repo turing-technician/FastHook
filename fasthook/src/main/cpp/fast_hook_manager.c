@@ -9,7 +9,7 @@
 #include <signal.h>
 #include <ucontext.h>
 
-#include "fake_dlfcn.h"
+#include "enhanced_dlfcn.h"
 #include "fast_hook_manager.h"
 
 static inline void InitJit() {
@@ -18,23 +18,23 @@ static inline void InitJit() {
     void *art_lib = NULL;
 
     if(pointer_size_ == kPointerSize32) {
-        jit_lib = fake_dlopen("/system/lib/libart-compiler.so", RTLD_NOW);
+        jit_lib = enhanced_dlopen("/system/lib/libart-compiler.so", RTLD_NOW);
     }else {
-        jit_lib = fake_dlopen("/system/lib64/libart-compiler.so", RTLD_NOW);
+        jit_lib = enhanced_dlopen("/system/lib64/libart-compiler.so", RTLD_NOW);
     }
 
     if(pointer_size_ == kPointerSize32) {
-        art_lib = fake_dlopen("/system/lib/libart.so", RTLD_NOW);
+        art_lib = enhanced_dlopen("/system/lib/libart.so", RTLD_NOW);
     }else {
-        art_lib = fake_dlopen("/system/lib64/libart.so", RTLD_NOW);
+        art_lib = enhanced_dlopen("/system/lib64/libart.so", RTLD_NOW);
     }
 
-    jit_compile_method_ = (bool (*)(void *, void *, void *, bool)) fake_dlsym(jit_lib, "jit_compile_method");
-    jit_load_ = (void* (*)(bool*))(fake_dlsym(jit_lib, "jit_load"));
+    jit_compile_method_ = (bool (*)(void *, void *, void *, bool)) enhanced_dlsym(jit_lib, "jit_compile_method");
+    jit_load_ = (void* (*)(bool*))(enhanced_dlsym(jit_lib, "jit_load"));
     bool will_generate_debug_symbols = false;
     jit_compiler_handle_ = (jit_load_)(&will_generate_debug_symbols);
 
-    art_jit_compiler_handle_ = fake_dlsym(art_lib, "_ZN3art3jit3Jit20jit_compiler_handle_E");
+    art_jit_compiler_handle_ = enhanced_dlsym(art_lib, "_ZN3art3jit3Jit20jit_compiler_handle_E");
 
     void *compiler_options = (void *)ReadPointer((unsigned char *)jit_compiler_handle_ + pointer_size_);
     memcpy((unsigned char *)compiler_options + 6 * pointer_size_,&max_units,pointer_size_);
