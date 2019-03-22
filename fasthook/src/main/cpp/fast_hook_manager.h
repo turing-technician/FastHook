@@ -281,6 +281,10 @@ static inline uint16_t ReadInt16(void *pointer) {
 	return *((uint16_t *)pointer);
 }
 
+static inline uint8_t ReadInt8(void *pointer) {
+    return *((uint8_t *)pointer);
+}
+
 static inline uint32_t RoundUp(uint32_t size, uint32_t ptr_size) {
 	return (size + ptr_size - 1) - ((size + ptr_size - 1) & (ptr_size - 1));
 }

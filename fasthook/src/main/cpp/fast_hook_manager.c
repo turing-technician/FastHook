@@ -76,7 +76,7 @@ static inline void *GetProfilingSaveEntryPoint(void *profiling) {
 }
 
 static inline bool GetProfilingCompileState(void *profiling) {
-    return (bool)ReadInt32((unsigned char *) profiling + kProfilingCompileStateOffset);
+    return (bool)ReadInt8((unsigned char *) profiling + kProfilingCompileStateOffset);
 }
 
 static inline void SetProfilingSaveEntryPoint(void *profiling, void *entry_point) {
@@ -241,7 +241,8 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
             kArtMethodHotnessCountOffset = 18;
             kArtMethodProfilingOffset = RoundUp(4 * 4 +  2* 2,pointer_size_);
             kArtMethodQuickCodeOffset = RoundUp(4 * 4 +  2* 2,pointer_size_) + pointer_size_;
-            kProfilingCompileStateOffset = 4 + pointer_size_ + sizeof(bool) * 2 + 2;
+            kProfilingCompileStateOffset = 4 + pointer_size_;
+            kProfilingSavedEntryPointOffset = 4 + pointer_size_ + sizeof(bool) * 2 + 2;
             kHotMethodThreshold = 10000;
             kHotMethodMaxCount = 50;
             break;
@@ -252,7 +253,8 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
             kArtMethodHotnessCountOffset = 18;
             kArtMethodProfilingOffset = RoundUp(4 * 4 +  2* 2,pointer_size_) + pointer_size_;
             kArtMethodQuickCodeOffset = RoundUp(4 * 4 +  2* 2,pointer_size_) + pointer_size_ * 2;
-            kProfilingCompileStateOffset = 4 + pointer_size_ + sizeof(bool) * 2 + 2;
+            kProfilingCompileStateOffset = 4 + pointer_size_;
+            kProfilingSavedEntryPointOffset = 4 + pointer_size_ + sizeof(bool) * 2 + 2;
             kHotMethodThreshold = 10000;
             kHotMethodMaxCount = 50;
             break;
@@ -263,7 +265,8 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
             kArtMethodHotnessCountOffset = 18;
             kArtMethodProfilingOffset = RoundUp(4 * 4 +  2* 2,pointer_size_) + pointer_size_ * 2;
             kArtMethodQuickCodeOffset = RoundUp(4 * 4 +  2* 2,pointer_size_) + pointer_size_ * 3;
-            kProfilingCompileStateOffset = 4 + pointer_size_ + sizeof(bool) * 2 + 2;
+            kProfilingCompileStateOffset = 4 + pointer_size_;
+            kProfilingSavedEntryPointOffset = 4 + pointer_size_ + sizeof(bool) * 2 + 2;
             kHotMethodThreshold = 10000;
             kHotMethodMaxCount = 50;
             break;
@@ -320,6 +323,7 @@ bool CompileMethod(JNIEnv *env, jclass clazz, jobject method) {
 
     ret = jit_compile_method_(jit_compiler_handle_, art_method, thread, false);
     memcpy(thread,&old_flag_and_state,4);
+    LOGI("CompileMethod:%d",ret);
 
     return ret;
 }
@@ -331,7 +335,10 @@ bool IsCompiled(JNIEnv *env, jclass clazz, jobject method) {
     void *method_entry = (void *)ReadPointer((unsigned char *)art_method + kArtMethodQuickCodeOffset);
     int hotness_count = GetArtMethodHotnessCount(art_method);
 
-    if(method_entry != art_quick_to_interpreter_bridge_ && hotness_count < kHotMethodThreshold)
+    if(method_entry != art_quick_to_interpreter_bridge_)
+        ret = true;
+
+    if(!ret && hotness_count >= kHotMethodThreshold)
         ret = true;
 
     LOGI("IsCompiled:%d",ret);
