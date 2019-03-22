@@ -1,6 +1,6 @@
 # FastHook
 一种高效稳定、简洁易用的Android Hook框架，**实际项目验证，拥有远超其他同类框架的优异稳定性**。
-实现原理，请参考[FastHook](https://www.jianshu.com/p/d2a8aa249134)
+实现原理，请参考[FastHook](https://blog.csdn.net/TuringTechnician/article/details/88613555)
 # 使用
 提供一个Hook信息类，可以是任意类，但是必须定义有**static String[] HOOK_ITEMS**；例如
 HookInfo.java
