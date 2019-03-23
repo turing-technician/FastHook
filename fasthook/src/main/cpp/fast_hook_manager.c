@@ -271,14 +271,17 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
             kHotMethodMaxCount = 50;
             break;
         case kAndroidM:
+	    kArtMethodAccessFlagsOffset = 4 * 3;
             kArtMethodInterpreterEntryOffset = RoundUp(4 * 7,pointer_size_);
             kArtMethodQuickCodeOffset = RoundUp(4 * 7,pointer_size_) + pointer_size_ * 2;
             break;
         case kAndroidLMR1:
+	    kArtMethodAccessFlagsOffset = 4 * 2 + 4 * 3;
             kArtMethodInterpreterEntryOffset = RoundUp(4 * 2 + 4 * 7,pointer_size_);
             kArtMethodQuickCodeOffset = RoundUp(4 * 2 + 4 * 7,pointer_size_) + pointer_size_ * 2;
             break;
         case kAndroidL:
+	    kArtMethodAccessFlagsOffset = 4 * 2 + 4 * 4 + 8 * 4;
             kArtMethodInterpreterEntryOffset = 4 * 2 + 4 * 4;
             kArtMethodQuickCodeOffset = 4 * 2 + 4 * 4 + 8 * 2;
             break;
