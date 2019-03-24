@@ -40,8 +40,6 @@ static inline void InitJit() {
     memcpy((unsigned char *)compiler_options + 6 * pointer_size_,&max_units,pointer_size_);
 
     runtime_ = (void *)ReadPointer((unsigned char *)jvm_ + pointer_size_);
-
-    art_quick_to_interpreter_bridge_ = enhanced_dlsym(art_lib, "art_quick_to_interpreter_bridge");
 }
 
 static inline void *EntryPointToCodePoint(void *entry_point) {
@@ -271,17 +269,17 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
             kHotMethodMaxCount = 50;
             break;
         case kAndroidM:
-	    kArtMethodAccessFlagsOffset = 4 * 3;
+	        kArtMethodAccessFlagsOffset = 4 * 3;
             kArtMethodInterpreterEntryOffset = RoundUp(4 * 7,pointer_size_);
             kArtMethodQuickCodeOffset = RoundUp(4 * 7,pointer_size_) + pointer_size_ * 2;
             break;
         case kAndroidLMR1:
-	    kArtMethodAccessFlagsOffset = 4 * 2 + 4 * 3;
+	        kArtMethodAccessFlagsOffset = 4 * 2 + 4 * 3;
             kArtMethodInterpreterEntryOffset = RoundUp(4 * 2 + 4 * 7,pointer_size_);
             kArtMethodQuickCodeOffset = RoundUp(4 * 2 + 4 * 7,pointer_size_) + pointer_size_ * 2;
             break;
         case kAndroidL:
-	    kArtMethodAccessFlagsOffset = 4 * 2 + 4 * 4 + 8 * 4;
+	        kArtMethodAccessFlagsOffset = 4 * 2 + 4 * 4 + 8 * 4;
             kArtMethodInterpreterEntryOffset = 4 * 2 + 4 * 4;
             kArtMethodQuickCodeOffset = 4 * 2 + 4 * 4 + 8 * 2;
             break;
@@ -292,6 +290,16 @@ jint Init(JNIEnv *env, jclass clazz, jint version) {
     sigaction_info_ = (struct SigactionInfo *)malloc(sizeof(struct SigactionInfo));
     sigaction_info_->addr = NULL;
     sigaction_info_->len = 0;
+
+    void *art_lib = NULL;
+
+    if(pointer_size_ == kPointerSize32) {
+        art_lib = enhanced_dlopen("/system/lib/libart.so", RTLD_NOW);
+    }else {
+        art_lib = enhanced_dlopen("/system/lib64/libart.so", RTLD_NOW);
+    }
+
+    art_quick_to_interpreter_bridge_ = enhanced_dlsym(art_lib, "art_quick_to_interpreter_bridge");
 
     if(kTLSSlotArtThreadSelf > 0) {
         InitJit();
@@ -341,8 +349,10 @@ bool IsCompiled(JNIEnv *env, jclass clazz, jobject method) {
     if(method_entry != art_quick_to_interpreter_bridge_)
         ret = true;
 
-    if(!ret && hotness_count >= kHotMethodThreshold)
-        ret = true;
+    if(kTLSSlotArtThreadSelf > 0) {
+        if(!ret && hotness_count >= kHotMethodThreshold)
+            ret = true;
+    }
 
     LOGI("IsCompiled:%d",ret);
     return ret;

@@ -119,7 +119,7 @@ public class FastHookManager {
                 doHook(targetMethod,hookMethod,forwardMethod,mode,0);
             }
 
-            if(!jitInline) {
+            if(!jitInline && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 disableJITInline();
             }
         }catch (Exception e) {
