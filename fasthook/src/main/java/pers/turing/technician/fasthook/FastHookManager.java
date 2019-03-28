@@ -143,6 +143,10 @@ public class FastHookManager {
             Logd("do replace hook for native method");
         }
 
+        if(mode == MODE_REPLACE && Build.VERSION.SDK_INT == ANDROID_L && !isNative) {
+            mode = MODE_REWRITE;
+        }
+
         switch(mode) {
             case MODE_REWRITE:
                 long entryPoint = getMethodEntryPoint(targetMethod);
@@ -178,6 +182,10 @@ public class FastHookManager {
                         if(success) {
                             doFullRewriteHookInternal(targetMethod,hookMethod,forwardMethod);
                         }else {
+                            if(Build.VERSION.SDK_INT == ANDROID_L) {
+                                Loge("hook failed!");
+                                return;
+                            }
                             doReplaceHookInternal(targetMethod,hookMethod,forwardMethod,isNative);
                         }
                     }else {
@@ -212,6 +220,10 @@ public class FastHookManager {
                                 if(success) {
                                     doFullRewriteHookInternal(targetMethod,hookMethod,forwardMethod);
                                 }else {
+                                    if(Build.VERSION.SDK_INT == ANDROID_L) {
+                                        Loge("hook failed!");
+                                        return;
+                                    }
                                     if(Build.VERSION.SDK_INT >= ANDROID_O && BuildConfig.DEBUG) {
                                         setNativeMethod(targetMethod);
                                         Logd("set target method to native on debug mode");
