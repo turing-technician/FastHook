@@ -33,12 +33,12 @@ mode:提供两种hook模式："1":**Inline Hook(性能高效)**；"2":**EntryPoi
  */
 public static void doHook(String hookInfoClassName, ClassLoader hookInfoClassLoader, ClassLoader targetClassLoader, ClassLoader hookClassLoader, ClassLoader forwardClassLoader, boolean jitInline)
 ```
-**hookInfoClassName**：HookInfo类名
-**hookInfoClassLoader**：HookInfo类所在的ClassLoader，如果为null，代表当前ClassLoader
-**targetClassLoader**：Target方法所在的ClassLoader，如果为null，代表当前ClassLoader
-**hookClassLoader**：Hook方法所在的ClassLoader，如果为null，代表当前ClassLoader
-**forwardClassLoader**：Forward方法所在的ClassLoader，如果为null，代表当前ClassLoader
-**jitInline**：是否内联，false，禁止内联；true，允许内联
+- **hookInfoClassName**：HookInfo类名
+- **hookInfoClassLoader**：HookInfo类所在的ClassLoader，如果为null，代表当前ClassLoader
+- **targetClassLoader**：Target方法所在的ClassLoader，如果为null，代表当前ClassLoader
+- **hookClassLoader**：Hook方法所在的ClassLoader，如果为null，代表当前ClassLoader
+- **forwardClassLoader**：Forward方法所在的ClassLoader，如果为null，代表当前ClassLoader
+- **jitInline**：是否内联，false，禁止内联；true，允许内联
 
 **调用**
 - 插件式Hook：需要提供插件的ClassLoader,建议在attachBaseContext方法里调用。
@@ -64,8 +64,8 @@ public interface FastHookCallback {
     void afterHookedMethod(FastHookParam param);
 }
 ```
-**beforeHookedMethod**：原方法调用前调用
-**afterHookedMethod**：原方法调用后调用
+- **beforeHookedMethod**：原方法调用前调用
+- **afterHookedMethod**：原方法调用后调用
 ```
 public class FastHookParam {
     public Object receiver;
@@ -74,10 +74,10 @@ public class FastHookParam {
     public boolean replace;
 }
 ```
-**receiver**：this对象，static方法则为null
-**args**：方法参数
-**result**：方法返回值
-**replace**：是否替换方法，如果为true，则不会调用原方法，并以result返回
+- **receiver**：this对象，static方法则为null
+- **args**：方法参数
+- **result**：方法返回值
+- **replace**：是否替换方法，如果为true，则不会调用原方法，并以result返回
 
 **接口**
 ```
@@ -94,13 +94,13 @@ public class FastHookParam {
  */
  FastHookManager.doHook(String className, ClassLoader classLoader, String methodName, String methodSig, FastHookCallback callback, int mode, boolean jitInline)
  ```
-**className**：目标方法类名
-**classLoader**：目标方法所在ClassLoader，如果为null，代表当前ClassLoader
-**methodName**：目标方法方法名
-**methodSig**：目标方法方法签名
-**callback**：hook回调方法
-**mode**：hook模式，FastHookManager.MODE_REWRITE和FastHookManager.MODE_REPLACE
-**jitInline**：是否内联，false，禁止内联；true，允许内联
+- **className**：目标方法类名
+- **classLoader**：目标方法所在ClassLoader，如果为null，代表当前ClassLoader
+- **methodName**：目标方法方法名
+- **methodSig**：目标方法方法签名
+- **callback**：hook回调方法
+- **mode**：hook模式，FastHookManager.MODE_REWRITE和FastHookManager.MODE_REPLACE
+- **jitInline**：是否内联，false，禁止内联；true，允许内联
 
 **调用**
 ```
