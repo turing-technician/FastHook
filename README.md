@@ -3,10 +3,10 @@
 实现原理，请参考[FastHook](https://blog.csdn.net/TuringTechnician/article/details/88613555)
 # 使用
 提供两种使用方式：**配置方式**、**callback方式**
-**配置方式**：代码取master分支
-**callback方式**：代码取callback分支
+- **配置方式**：代码取master分支
+- **callback方式**：代码取callback分支
 
-**1. 配置方式**
+1. **配置方式**
 提供一个Hook信息类，可以是任意类，但是必须定义有**static String[] HOOK_ITEMS**；例如
 HookInfo.java
 ```
@@ -56,7 +56,7 @@ FastHookManger.doHook("hookInfoClassName",null,null,null,null,false);
 //Root Hook，需要体供插件的ClassLoader和apk的ClassLoader
 FastHookManger.doHook("hookInfoClassName",pluginsClassloader,apkClassLoader,pluginsClassloader,pluginsClassloader,false);
 ```
-**2. callback方式**
+2. **callback方式**
 **实现FastHookCallback接口**
 ```
 public interface FastHookCallback {
