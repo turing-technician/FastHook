@@ -15,6 +15,9 @@ uint32_t kPointerSize64 = 8;
 uint32_t kHiddenApiPolicyOffset = 0;
 
 uint32_t kAccNative = 0x0100;
+uint32_t kAccPrivate = 0x0002;
+uint32_t kAccStatic = 0x0008;
+uint32_t kAccConstructor = 0x00010000;
 uint32_t kAccCompileDontBother = 0;
 
 uint32_t kArtMethodAccessFlagsOffset = 4;
@@ -24,6 +27,8 @@ uint32_t kArtMethodInterpreterEntryOffset = 0;
 uint32_t kArtMethodQuickCodeOffset = 0;
 uint32_t kProfilingCompileStateOffset = 0;
 uint32_t kProfilingSavedEntryPointOffset = 0;
+
+uint32_t kClassSuperOffset = 0;
 
 uint32_t kHotMethodThreshold = 0;
 uint32_t kHotMethodMaxCount = 0;
@@ -94,6 +99,8 @@ void* jit_compiler_handle_ = NULL;
 bool (*jit_compile_method_)(void*, void*, void*, bool) = NULL;
 void** art_jit_compiler_handle_ = NULL;
 void *art_quick_to_interpreter_bridge_ = NULL;
+jobject (*new_local_ref_)(void*,void*) = NULL;
+void* (*decode_jobject_)(void*,void*) = NULL;
 
 uint32_t pointer_size_ = 0;
 
@@ -106,11 +113,17 @@ unsigned char jump_trampoline_[] = {
 		0x00, 0x00, 0x00, 0x00
 };
 
-//DF F8 1C C0 ; ldr ip, [pc, #28] 1f
+//DF F8 28 C0 ; ldr ip, [pc, #40] 1f
 //60 45       ; cmp r0, ip
 //00 bf       ; nop
-//40 F0 06 80 ; bne.w #12
-//05 48       ; ldr r0, [pc, #20] 2f
+//40 F0 0C 80 ; bne.w #24
+//84 46       ; mov ip, r0
+//00 bf       ; nop
+//07 48       ; ldr r0, [pc, #28] 2f
+//00 bf       ; nop
+//61 46       ; mov r1, ip
+//00 bf       ; nop
+//6A 46       ; mov r2, sp
 //00 bf       ; nop
 //DF F8 14 F0 ; ldr ip, [pc ,#20] 3f
 //E7 46       ; mov pc, ip
@@ -123,11 +136,17 @@ unsigned char jump_trampoline_[] = {
 //00 00 00 00 ; 3f:hook method entry point
 //00 00 00 00 ; 4f:other entry point
 unsigned char quick_hook_trampoline_[] = {
-		0xdf, 0xf8, 0x1c, 0xc0,
+		0xdf, 0xf8, 0x28, 0xc0,
 		0x60, 0x45,
 		0x00, 0xbf,
-		0x40, 0xf0, 0x06, 0x80,
-		0x05, 0x48,
+		0x40, 0xf0, 0x0c, 0x80,
+		0x84, 0x46,
+		0x00, 0xbf,
+		0x07, 0x48,
+		0x00, 0xbf,
+		0x61, 0x46,
+		0x00, 0xbf,
+		0x6a, 0x46,
 		0x00, 0xbf,
 		0xdf, 0xf8, 0x14, 0xf0,
 		0xe7, 0x46,
@@ -160,12 +179,24 @@ unsigned char quick_target_trampoline_[] = {
 		0x00, 0x00, 0x00, 0x00
 };
 
-//01 48       ; ldr r0, [pc, #4]
+//84 46       ; mov ip, r0
+//00 bf       ; nop
+//03 48       ; ldr r0, [pc, #12]
+//00 bf       ; nop
+//61 46       ; mov r1, ip
+//00 bf       ; nop
+//6A 46       ; mov r2, sp
 //00 bf       ; nop
 //D0 F8 1C F0 ; ldr pc, [r0, #28]
 //00 00 00 00 ; hook method
 unsigned char hook_trampoline_[] = {
-		0x01, 0x48,
+        0x84, 0x46,
+		0x00, 0xbf,
+		0x03, 0x48,
+		0x00, 0xbf,
+		0x61, 0x46,
+		0x00, 0xbf,
+		0x6a, 0x46,
 		0x00, 0xbf,
 		0xd0, 0xf8, 0x1c, 0xf0,
 		0x00, 0x00, 0x00, 0x00
@@ -196,10 +227,13 @@ unsigned char jump_trampoline_[] = {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-//11 01 00 58 ; ldr x17, #32 1f
+//71 01 00 58 ; ldr x17, #44 1f
 //1F 00 11 EB ; cmp x0, x17
-//81 00 00 54 ; bne #16
-//E0 00 00 58 ; ldr x0, #28 2f
+//e1 00 00 54 ; bne #28
+//F1 03 00 AA ; mov x17, x0
+//20 01 00 58 ; ldr x0, #36 2f
+//E1 03 11 AA ; mov x1, x17
+//E2 03 00 91 ; mov x2, sp
 //11 01 00 58 ; ldr x17, #32 3f
 //20 02 1F D6 ; br x17
 //11 01 00 58 ; ldr x17, #32 4f
@@ -209,10 +243,13 @@ unsigned char jump_trampoline_[] = {
 //00 00 00 00 00 00 00 00 ; 3f:hook method entry point
 //00 00 00 00 00 00 00 00 ; 4f:other entry point
 unsigned char quick_hook_trampoline_[] = {
-        0x11, 0x01, 0x00, 0x58,
+		0x71, 0x01, 0x00, 0x58,
         0x1f, 0x00, 0x11, 0xeb,
-        0x81, 0x00, 0x00, 0x54,
-        0xe0, 0x00, 0x00, 0x58,
+        0xe1, 0x00, 0x00, 0x54,
+		0xf1, 0x03, 0x00, 0xaa,
+        0x20, 0x01, 0x00, 0x58,
+		0xe1, 0x03, 0x11, 0xaa,
+		0xe2, 0x03, 0x00, 0x91,
         0x11, 0x01, 0x00, 0x58,
         0x20, 0x02, 0x1f, 0xd6,
         0x11, 0x01, 0x00, 0x58,
@@ -244,15 +281,21 @@ unsigned char quick_target_trampoline_[] = {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
-//60 00 00 58 ; ldr x0, #12 1f
+//F0 03 00 AA ; mov x16, x0
+//A0 00 00 58 ; ldr x0, #20 1f
+//E1 03 10 AA ; mov x1, x16
+//E2 03 00 91 ; mov x2, sp
 //10 14 40 F9 ; ldr x16, [x0, #40]
 //00 02 1F D6 ; br x16
 //00 00 00 00 00 00 00 00 ; 1f:hook method
 unsigned char hook_trampoline_[] = {
-        0x60, 0x00, 0x00, 0x58,
-        0x10, 0x14, 0x40, 0xf9,
-        0x00, 0x02, 0x1f, 0xd6,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+		0xf0, 0x03, 0x00, 0xaa,
+		0xa0, 0x00, 0x00, 0x58,
+		0xe1, 0x03, 0x10, 0xaa,
+		0xe2, 0x03, 0x00, 0x91,
+		0x10, 0x14, 0x40, 0xf9,
+		0x00, 0x02, 0x1f, 0xd6,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
 //60 00 00 58 ; ldr x0, #12 1f
@@ -271,6 +314,18 @@ unsigned char target_trampoline_[] = {
 
 static inline long ReadPointer(void *pointer) {
 	return *((long *)pointer);
+}
+
+static inline double ReadDouble(void *pointer) {
+    return *((double *)pointer);
+}
+
+static inline float ReadFloat(void *pointer) {
+    return *((float *)pointer);
+}
+
+static inline uint64_t ReadInt64(void *pointer) {
+	return *((uint64_t *)pointer);
 }
 
 static inline uint32_t ReadInt32(void *pointer) {

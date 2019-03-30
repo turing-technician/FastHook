@@ -11,10 +11,14 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 
+import pers.turing.technician.fasthook.FastHookCallback;
 import pers.turing.technician.fasthook.FastHookManager;
+import pers.turing.technician.fasthook.FastHookParam;
 import pers.turing.technician.fasthookapp.hook.Test;
 
 public class MainActivity extends AppCompatActivity {
@@ -85,8 +89,8 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View view) {
                 if(!MainApplication.mTest) {
                     MainApplication.mTest = true;
-                    FastHookManager.doHook("pers.turing.technician.fasthookapp.hook.HookInfo",null,null,null,null,false);
-                    test("1:");
+                    doHook(FastHookManager.MODE_REWRITE);
+                    test(String.valueOf(FastHookManager.MODE_REWRITE));
                 }else {
                     Toast toast = Toast.makeText(mContext,"already hook,please restart app to test!",Toast.LENGTH_SHORT);
                     toast.show();
@@ -99,14 +103,131 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View view) {
                 if(!MainApplication.mTest) {
                     MainApplication.mTest = true;
-                    FastHookManager.doHook("pers.turing.technician.fasthookapp.hook.HookInfo2",null,null,null,null,false);
-                    test("2:");
+                    doHook(FastHookManager.MODE_REPLACE);
+                    test(String.valueOf(FastHookManager.MODE_REPLACE));
                 }else {
                     Toast toast = Toast.makeText(mContext,"already hook,please restart app to test!",Toast.LENGTH_SHORT);
                     toast.show();
                 }
             }
         });
+    }
+
+    public void doHook(int mode) {
+        String className = "pers.turing.technician.fasthookapp.hook.Test";
+
+        FastHookManager.doHook(className,null, "<init>", "Ljava/lang/String;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"beforeHookedMethod ConstrctorTest");
+                param.args[0] = "hook param-"+param.args[0];
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+
+            }
+        },mode,false);
+
+        FastHookManager.doHook(className, null, "testDirect", "Ljava/lang/String;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"beforeHookedMethod DirectTest");
+                param.args[0] = "hook param-"+param.args[0];
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"afterHookedMethod DirectTest");
+                param.result = param.result+"-hook result";
+            }
+        },mode,false);
+
+        FastHookManager.doHook(className, null, "testVirtual", "Ljava/lang/String;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"beforeHookedMethod VirtualTest");
+                param.args[0] = "hook param-"+param.args[0];
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"afterHookedMethod VirtualTest");
+                param.result = param.result+"-hook result";
+            }
+        },mode,false);
+
+        FastHookManager.doHook(className, null, "testStatic", "Ljava/lang/String;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"beforeHookedMethod StaticTest");
+                param.args[0] = "hook param-"+param.args[0];
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"afterHookedMethod StaticTest");
+                param.result = param.result+"-hook result";
+            }
+        },mode,false);
+
+        FastHookManager.doHook(className, null, "testNativeDirect", "Ljava/lang/String;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"beforeHookedMethod NativeDirectTest");
+                param.args[0] = "hook param-"+param.args[0];
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"afterHookedMethod NativeDirectTest");
+                param.result = param.result+"-hook result";
+            }
+        },mode,false);
+
+        FastHookManager.doHook(className, null, "testNativeVirtual", "Ljava/lang/String;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"beforeHookedMethod NativeVirtualTest");
+                param.args[0] = "hook param-"+param.args[0];
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"afterHookedMethod NativeVirtualTest");
+                param.result = param.result+"-hook result";
+            }
+        },mode,false);
+
+        FastHookManager.doHook(className, null, "testNativeStatic", "Ljava/lang/String;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"beforeHookedMethod NativeStaticTest");
+                param.args[0] = "hook param-"+param.args[0];
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+                Log.e(MainApplication.TAG,"afterHookedMethod NativeStaticTest");
+                param.result = param.result+"-hook result";
+            }
+        },mode,false);
+
+        FastHookManager.doHook("android.widget.TextView", null, "setText", "Ljava/lang/CharSequence;", new FastHookCallback() {
+            @Override
+            public void beforeHookedMethod(FastHookParam param) {
+                CharSequence charSequence = (CharSequence) param.args[0];
+                if(charSequence.toString().contains("Test SystemMethod") && !charSequence.toString().contains("hook param")) {
+                    Log.e(MainApplication.TAG,"beforeHookedMethod SystemTest");
+                    param.args[0] = "hook param-"+charSequence;
+                }
+            }
+
+            @Override
+            public void afterHookedMethod(FastHookParam param) {
+
+            }
+        },mode,false);
     }
 
     public void reset() {
