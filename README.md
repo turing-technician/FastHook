@@ -86,7 +86,7 @@ public class FastHookParam {
  *@param className 目标方法类名
  *@param classLoader 目标方法所在ClassLoader，如果为null，代表当前ClassLoader
  *@param methodName 目标方法方法名
- *@param methodSig 目标方法方法签名
+ *@param methodSig 目标方法参数签名，不包括返回类型
  *@param callback hook回调方法
  *@param mode hook模式
  *@param jitInline 是否内联，false，禁止内联；true，允许内联
@@ -97,7 +97,7 @@ public class FastHookParam {
 - **className**：目标方法类名
 - **classLoader**：目标方法所在ClassLoader，如果为null，代表当前ClassLoader
 - **methodName**：目标方法方法名
-- **methodSig**：目标方法方法签名
+- **methodSig**：目标方法参数签名，不包括返回类型
 - **callback**：hook回调方法
 - **mode**：hook模式，FastHookManager.MODE_REWRITE和FastHookManager.MODE_REPLACE
 - **jitInline**：是否内联，false，禁止内联；true，允许内联
