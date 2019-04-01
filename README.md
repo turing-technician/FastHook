@@ -1,6 +1,8 @@
 # FastHook
 一种高效稳定、简洁易用的Android Hook框架，**实际项目验证，拥有远超其他同类框架的优异稳定性**。
-实现原理，请参考[FastHook](https://blog.csdn.net/TuringTechnician/article/details/88613555)
+实现原理，请参考
+- [**FastHook——一种高效稳定、简洁易用的Android Hook框架**](https://blog.csdn.net/TuringTechnician/article/details/88613555)
+- [**FastHook——巧妙利用动态代理实现非侵入式AOP**](https://blog.csdn.net/TuringTechnician/article/details/88925234)
 # 使用
 提供两种使用方式：**配置方式**、**Callback方式**
 - **配置方式**：代码取master分支
