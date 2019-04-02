@@ -151,6 +151,7 @@ static inline void *CreatTrampoline(int type) {
 void SignalHandle(int signal, siginfo_t *info, void *reserved) {
     ucontext_t* context = (ucontext_t*)reserved;
     void *addr = (void *)context->uc_mcontext.fault_address;
+    LOGI("Signal%d FaultAddress:%p TargetCode:%p",signal,addr,sigaction_info_->addr);
 
     if(sigaction_info_->addr == addr) {
         void *target_code = sigaction_info_->addr;
@@ -608,7 +609,7 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
     }
 
     sigaction_info_->addr = target_code;
-    sigaction_info_->len = original_prologue_len;
+    sigaction_info_->len = jump_trampoline_len;
     if(current_handler_ == NULL) {
         default_handler_ = (struct sigaction *)malloc(sizeof(struct sigaction));
         current_handler_ = (struct sigaction *)malloc(sizeof(struct sigaction));
@@ -622,6 +623,12 @@ jint DoFullRewriteHook(JNIEnv *env, jclass clazz, jobject target_method, jobject
     }else {
         sigaction(SIGSEGV, current_handler_, NULL);
     }
+
+    long page_size = sysconf(_SC_PAGESIZE);
+    unsigned alignment = (unsigned)((unsigned long long)target_code % page_size);
+    int ret = mprotect((void *) (target_code - alignment), (size_t) (alignment + jump_trampoline_len),
+                       PROT_READ | PROT_WRITE | PROT_EXEC);
+    LOGI("Mprotect:%d Pagesize:%d Alignment:%d",ret,page_size,alignment);
 
     memcpy((unsigned char *) art_target_method + kArtMethodQuickCodeOffset,&art_quick_to_interpreter_bridge_,pointer_size_);
     memcpy(target_code, jump_trampoline, jump_trampoline_len);
