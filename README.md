@@ -18,6 +18,9 @@ private static String[] mHookItem = {
             "hookClassName","hookMethodName","hookParamSig",
             "forwardClassName","forwardMethodName","forwardParamSig"
 };
+public static String[][] HOOK_ITEMS = {
+            mHookItem
+};
 ```
 mode:提供两种hook模式："1":**Inline Hook(性能高效)**；"2":**EntryPoint替换模式(弥补Inline Hook在一些情况下不能Hook的缺陷)**
 
