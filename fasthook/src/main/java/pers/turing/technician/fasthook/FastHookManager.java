@@ -66,6 +66,9 @@ public class FastHookManager {
         mHookInfoMap = new HashMap<Member,HookInfo>();
         mHandler = new HookHandler();
         init(Build.VERSION.SDK_INT);
+        if(Build.VERSION.SDK_INT >= ANDROID_P) {
+            disableHiddenApiCheck();
+        }
         Logd("Init");
     }
 

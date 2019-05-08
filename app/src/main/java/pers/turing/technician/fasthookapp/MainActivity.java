@@ -316,7 +316,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            FastHookManager.disableHiddenApiCheck();
             try {
                 Class<?> activityClass = Class.forName("dalvik.system.VMRuntime");
                 Method setHiddenApiExemptions = activityClass.getDeclaredMethod("setHiddenApiExemptions", String[].class);
