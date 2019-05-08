@@ -217,9 +217,22 @@ void static inline InitTrampoline(int version) {
 
 void DisableHiddenApiCheck(JNIEnv *env, jclass clazz) {
     if(kHiddenApiPolicyOffset > 0) {
+        int offset = 0;
         int no_check = 0;
-        memcpy((unsigned char *)runtime_ + kHiddenApiPolicyOffset,&no_check,4);
-        LOGI("Disable Hidden Api Check:%d",ReadInt32((unsigned char *)runtime_ + kHiddenApiPolicyOffset));
+
+        int policy = ReadInt32((unsigned char *)runtime_ + kHiddenApiPolicyOffset);
+        if(policy != kDarkGreyAndBlackList) {
+            int index = 0;
+            for(index = 0; index < kHiddenApiPolicyScope; index++) {
+                if(ReadInt32((unsigned char *)runtime_ + kHiddenApiPolicyOffset + index) == kDarkGreyAndBlackList) {
+                    offset = index;
+                }else if(ReadInt32((unsigned char *)runtime_ + kHiddenApiPolicyOffset - index) == kDarkGreyAndBlackList) {
+                    offset = -index;
+                }
+            }
+        }
+        memcpy((unsigned char *)runtime_ + kHiddenApiPolicyOffset + offset,&no_check,4);
+        LOGI("Disable Hidden Api Check:%d",ReadInt32((unsigned char *)runtime_ + kHiddenApiPolicyOffset + offset));
     }
 }
 

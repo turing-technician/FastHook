@@ -13,6 +13,8 @@ uint32_t kPointerSize32 = 4;
 uint32_t kPointerSize64 = 8;
 
 uint32_t kHiddenApiPolicyOffset = 0;
+uint32_t kDarkGreyAndBlackList = 2;
+uint32_t kHiddenApiPolicyScope = 100;
 
 uint32_t kAccNative = 0x0100;
 uint32_t kAccCompileDontBother = 0;

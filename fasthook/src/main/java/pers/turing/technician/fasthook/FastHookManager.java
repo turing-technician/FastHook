@@ -59,7 +59,6 @@ public class FastHookManager {
     private static HashMap<Member,HookRecord> mHookMap;
     private static HashMap<Long,ArrayList<HookRecord>> mQuickTrampolineMap;
     private static Handler mHandler;
-    private static long mQuickToInterpreterBridge;
 
     static{
         System.loadLibrary(HOOK_LIB);
@@ -67,6 +66,9 @@ public class FastHookManager {
         mQuickTrampolineMap = new HashMap<Long,ArrayList<HookRecord>>();
         mHandler = new HookHandler();
         init(Build.VERSION.SDK_INT);
+        if(Build.VERSION.SDK_INT >= ANDROID_P) {
+            disableHiddenApiCheck();
+        }
         Logd("Init");
     }
 
