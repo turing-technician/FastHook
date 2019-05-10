@@ -6,7 +6,6 @@ import android.os.Message;
 import android.util.Log;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.StringBuilder;
 import java.lang.reflect.Method;
@@ -47,9 +46,6 @@ public class FastHookManager {
     private final static int RETRY_TIME_WAIT = 1000;
     private final static int RETRY_LIMIT = 1;
 
-    private final static int ARM_PARAM_COUNT_32 = 2;
-    private final static int ARM_PARAM_COUNT_64 = 6;
-
     private final static String HOOK_LIB = "fasthook";
 
     private final static String CONSTRUCTOR = "<init>";
@@ -62,7 +58,6 @@ public class FastHookManager {
     private static HashMap<Long,ArrayList<HookRecord>> mQuickTrampolineMap;
     private static HashMap<Member,HookInfo> mHookInfoMap;
     private static Handler mHandler;
-    private static long mThread;
 
     static{
         System.loadLibrary(HOOK_LIB);
@@ -291,12 +286,12 @@ public class FastHookManager {
         }
     }
 
-    private static FastHookParam hookHandle(long targetArtMethod, long sp, long paramCache) {
+    private static FastHookParam hookHandle(long targetArtMethod, long sp) {
         Member targetMethod = getReflectedMethod(targetArtMethod);
 
         HookInfo hookInfo = mHookInfoMap.get(targetMethod);
         FastHookCallback callback = hookInfo.mCallback;
-        FastHookParam param = parseParam(sp,paramCache,hookInfo.mParamType,hookInfo.mIsStatic);
+        FastHookParam param = parseParam(sp,hookInfo.mParamType,hookInfo.mIsStatic);
 
         callback.beforeHookedMethod(param);
         if(param.replace) {
@@ -316,177 +311,151 @@ public class FastHookManager {
         return param;
     }
 
-    private static FastHookParam hookHandle32(int targetArtMethod, int sp, int paramCache) {
-        Member targetMethod = getReflectedMethod(targetArtMethod);
-
-        HookInfo hookInfo = mHookInfoMap.get(targetMethod);
-        FastHookCallback callback = hookInfo.mCallback;
-        FastHookParam param = parseParam32(sp,paramCache,hookInfo.mParamType,hookInfo.mIsStatic);
-
-        callback.beforeHookedMethod(param);
-        if(param.replace) {
-            return param;
-        }
-
-        Method forwardMethod = (Method) hookInfo.mForwardMethod;
-        forwardMethod.setAccessible(true);
-
-        try {
-            param.result = forwardMethod.invoke(param.receiver,param.args);
-            callback.afterHookedMethod(param);
-        }catch (Exception e) {
-            throwException(new FastHookException(e));
-        }
-
-        return param;
-    }
-
-    private static Object hookHandleObject(int targetArtMethod, int sp, int paramCache) {
-        Log.d(TAG,"targetArtMethod:0x"+Integer.toHexString(targetArtMethod)+" sp:0x"+Integer.toHexString(sp)+" paramCache:0x"+Integer.toHexString(paramCache));
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static Object hookHandleObject(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         return param.result;
     }
 
-    private static boolean hookHandleBoolean(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static boolean hookHandleBoolean(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Boolean) {
             return ((Boolean) param.result).booleanValue();
         }
         return false;
     }
 
-    private static byte hookHandleByte(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static byte hookHandleByte(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Byte) {
             return ((Byte) param.result).byteValue();
         }
         return 0;
     }
 
-    private static char hookHandleChar(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static char hookHandleChar(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Character) {
             return ((Character) param.result).charValue();
         }
         return 0;
     }
 
-    private static short hookHandleShort(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static short hookHandleShort(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Short) {
             return ((Short) param.result).shortValue();
         }
         return 0;
     }
 
-    private static int hookHandleInt(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static int hookHandleInt(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Integer) {
             return ((Integer) param.result).intValue();
         }
         return 0;
     }
 
-    private static long hookHandleLong(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static long hookHandleLong(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Long) {
             return ((Long) param.result).longValue();
         }
         return 0;
     }
 
-    private static float hookHandleFloat(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static float hookHandleFloat(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Float) {
             return ((Float) param.result).floatValue();
         }
         return 0;
     }
 
-    private static double hookHandleDouble(int targetArtMethod, int sp, int paramCache) {
-        FastHookParam param = hookHandle32(targetArtMethod,sp,paramCache);
+    private static double hookHandleDouble(int targetArtMethod, int sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Double) {
             return ((Double) param.result).doubleValue();
         }
         return 0;
     }
 
-    private static void hookHandleVoid(int targetArtMethod, int sp, int paramCache) {
-        hookHandle32(targetArtMethod,sp,paramCache);
+    private static void hookHandleVoid(int targetArtMethod, int sp) {
+        hookHandle(targetArtMethod,sp);
         return;
     }
 
-    private static Object hookHandleObject(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static Object hookHandleObject(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         return param.result;
     }
 
-    private static boolean hookHandleBoolean(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static boolean hookHandleBoolean(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Boolean) {
             return ((Boolean) param.result).booleanValue();
         }
         return false;
     }
 
-    private static byte hookHandleByte(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static byte hookHandleByte(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Byte) {
             return ((Byte) param.result).byteValue();
         }
         return 0;
     }
 
-    private static char hookHandleChar(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static char hookHandleChar(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Character) {
             return ((Character) param.result).charValue();
         }
         return 0;
     }
 
-    private static short hookHandleShort(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static short hookHandleShort(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Short) {
             return ((Short) param.result).shortValue();
         }
         return 0;
     }
 
-    private static int hookHandleInt(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static int hookHandleInt(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Integer) {
             return ((Integer) param.result).intValue();
         }
         return 0;
     }
 
-    private static long hookHandleLong(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static long hookHandleLong(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Long) {
             return ((Long) param.result).longValue();
         }
         return 0;
     }
 
-    private static float hookHandleFloat(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static float hookHandleFloat(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Float) {
             return ((Float) param.result).floatValue();
         }
         return 0;
     }
 
-    private static double hookHandleDouble(long targetArtMethod, long sp, long paramCache) {
-        FastHookParam param = hookHandle(targetArtMethod,sp,paramCache);
+    private static double hookHandleDouble(long targetArtMethod, long sp) {
+        FastHookParam param = hookHandle(targetArtMethod,sp);
         if(param.result != null && param.result instanceof Double) {
             return ((Double) param.result).doubleValue();
         }
         return 0;
     }
 
-    private static void hookHandleVoid(long targetArtMethod, long sp, long paramCache) {
-        hookHandle(targetArtMethod,sp,paramCache);
+    private static void hookHandleVoid(long targetArtMethod, long sp) {
+        hookHandle(targetArtMethod,sp);
         return;
     }
 
@@ -526,9 +495,9 @@ public class FastHookManager {
 
         try {
             if(is32bit()) {
-                method = FastHookManager.class.getDeclaredMethod(methodName,int.class,int.class,int.class);
+                method = FastHookManager.class.getDeclaredMethod(methodName,int.class,int.class);
             }else {
-                method = FastHookManager.class.getDeclaredMethod(methodName,long.class,long.class,long.class);
+                method = FastHookManager.class.getDeclaredMethod(methodName,long.class,long.class);
             }
         }catch (Exception e) {
             e.printStackTrace();
@@ -642,18 +611,15 @@ public class FastHookManager {
         return arrayClassBuilder.toString();
     }
 
-    private static FastHookParam parseParam(long sp, long paramCache, Class[] paramType, boolean isStatic) {
+    private static FastHookParam parseParam(long sp, Class[] paramType, boolean isStatic) {
         FastHookParam param = new FastHookParam();
 
-        int offsetSp = 8;
-        int offsetParamCache = 0;
-        int index = 0;
+        int offset = 0;
         List<Object> args = new ArrayList<Object>();
 
         if(!isStatic) {
-            param.receiver = getObjectParam(paramCache,offsetParamCache);
-            offsetParamCache += 8;
-            index++;
+            param.receiver = getObjectParam(sp,offset);
+            offset += 4;
         }
 
         if(paramType == null)
@@ -661,240 +627,44 @@ public class FastHookManager {
 
         for(Class type : paramType) {
             if(type.equals(boolean.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    boolean b = getBooleanParam(sp,offsetSp);
-                    args.add(new Boolean(b));
-                    offsetSp += 4;
-                }else {
-                    boolean b = getBooleanParam(paramCache,offsetParamCache);
-                    args.add(new Boolean(b));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
+                boolean b = getBooleanParam(sp,offset);
+                args.add(new Boolean(b));
+                offset += 4;
             }else if(type.equals(byte.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    byte b2 = getByteParam(sp,offsetSp);
-                    args.add(new Byte(b2));
-                    offsetSp += 4;
-                }else {
-                    byte b2 = getByteParam(paramCache,offsetParamCache);
-                    args.add(new Byte(b2));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
+                byte b2 = getByteParam(sp,offset);
+                args.add(new Byte(b2));
+                offset += 4;
             }else if(type.equals(char.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    char c = getCharParam(sp,offsetSp);
-                    args.add(new Character(c));
-                    offsetSp += 4;
-                }else {
-                    char c = getCharParam(paramCache,offsetParamCache);
-                    args.add(new Character(c));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
+                char c = getCharParam(sp,offset);
+                args.add(new Character(c));
+                offset += 4;
             }else if(type.equals(short.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    short s = getShortParam(sp,offsetSp);
-                    args.add(new Short(s));
-                    offsetSp += 4;
-                }else {
-                    short s = getShortParam(paramCache,offsetParamCache);
-                    args.add(new Short(s));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
+                short s = getShortParam(sp,offset);
+                args.add(new Short(s));
+                offset += 4;
             }else if(type.equals(int.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    int i = getIntParam(sp,offsetSp);
-                    args.add(new Integer(i));
-                    offsetSp += 4;
-                }else {
-                    int i = getIntParam(paramCache,offsetParamCache);
-                    args.add(new Integer(i));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
+                int i = getIntParam(sp,offset);
+                args.add(new Integer(i));
+                offset += 4;
             }else if(type.equals(long.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    long l = getLongParam(sp,offsetSp);
-                    args.add(new Long(l));
-                    offsetSp += 8;
-                }else {
-                    long l = getLongParam(paramCache,offsetParamCache);
-                    args.add(new Long(l));
-                    offsetParamCache += 8;
-                    offsetSp += 8;
-                }
+                long l = getLongParam(sp,offset);
+                args.add(new Long(l));
+                offset += 8;
             }else if(type.equals(float.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    float f = getFloatParam(sp,offsetSp);
-                    args.add(new Float(f));
-                    offsetSp += 4;
-                }else {
-                    float f = getFloatParam(paramCache,offsetParamCache);
-                    args.add(new Float(f));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
+                float f = getFloatParam(sp,offset);
+                args.add(new Float(f));
+                offset += 4;
             }else if(type.equals(double.class)) {
-                if(index > ARM_PARAM_COUNT_64) {
-                    double d = getDoubleParam(sp,offsetSp);
-                    args.add(new Double(d));
-                    offsetSp += 8;
-                }else {
-                    double d = getDoubleParam(paramCache,offsetParamCache);
-                    args.add(new Double(d));
-                    offsetParamCache += 8;
-                    offsetSp += 8;
-                }
+                double d = getDoubleParam(sp,offset);
+                args.add(new Double(d));
+                offset += 8;
             }else if(type.equals(void.class)) {
 
             }else {
-                if(index > ARM_PARAM_COUNT_64) {
-                    Object obj = getObjectParam(sp,offsetSp);
-                    args.add(obj);
-                    offsetSp += 4;
-                }else {
-                    Object obj = getObjectParam(paramCache,offsetParamCache);
-                    args.add(obj);
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
+                Object obj = getObjectParam(sp,offset);
+                args.add(obj);
+                offset += 4;
             }
-
-            index++;
-        }
-
-        if(!args.isEmpty()) {
-            param.args = args.toArray(new Object[args.size()]);
-        }
-
-        return param;
-    }
-
-    private static FastHookParam parseParam32(int sp, int paramCache, Class[] paramType, boolean isStatic) {
-        FastHookParam param = new FastHookParam();
-
-        int offsetSp = 4;
-        int offsetParamCache = 0;
-        int index = 0;
-        List<Object> args = new ArrayList<Object>();
-
-        if(!isStatic) {
-            param.receiver = getObjectParam(paramCache,offsetParamCache);
-            offsetParamCache += 8;
-            index++;
-        }
-
-        if(paramType == null)
-            return param;
-
-        for(Class type : paramType) {
-            if(type.equals(boolean.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    boolean b = getBooleanParam(sp,offsetSp);
-                    args.add(new Boolean(b));
-                    offsetSp += 4;
-                }else {
-                    boolean b = getBooleanParam(paramCache,offsetParamCache);
-                    args.add(new Boolean(b));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
-            }else if(type.equals(byte.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    byte b2 = getByteParam(sp,offsetSp);
-                    args.add(new Byte(b2));
-                    offsetSp += 4;
-                }else {
-                    byte b2 = getByteParam(paramCache,offsetParamCache);
-                    args.add(new Byte(b2));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
-            }else if(type.equals(char.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    char c = getCharParam(sp,offsetSp);
-                    args.add(new Character(c));
-                    offsetSp += 4;
-                }else {
-                    char c = getCharParam(paramCache,offsetParamCache);
-                    args.add(new Character(c));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
-            }else if(type.equals(short.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    short s = getShortParam(sp,offsetSp);
-                    args.add(new Short(s));
-                    offsetSp += 4;
-                }else {
-                    short s = getShortParam(paramCache,offsetParamCache);
-                    args.add(new Short(s));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
-            }else if(type.equals(int.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    int i = getIntParam(sp,offsetSp);
-                    args.add(new Integer(i));
-                    offsetSp += 4;
-                }else {
-                    int i = getIntParam(paramCache,offsetParamCache);
-                    args.add(new Integer(i));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
-            }else if(type.equals(long.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    long l = getLongParam(sp,offsetSp);
-                    args.add(new Long(l));
-                    offsetSp += 8;
-                }else {
-                    long l = getLongParam(paramCache,offsetParamCache);
-                    args.add(new Long(l));
-                    offsetParamCache += 8;
-                    offsetSp += 8;
-                }
-            }else if(type.equals(float.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    float f = getFloatParam(sp,offsetSp);
-                    args.add(new Float(f));
-                    offsetSp += 4;
-                }else {
-                    float f = getFloatParam(paramCache,offsetParamCache);
-                    args.add(new Float(f));
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
-            }else if(type.equals(double.class)) {
-                if(index > ARM_PARAM_COUNT_32) {
-                    double d = getDoubleParam(sp,offsetSp);
-                    args.add(new Double(d));
-                    offsetSp += 8;
-                }else {
-                    double d = getDoubleParam(paramCache,offsetParamCache);
-                    args.add(new Double(d));
-                    offsetParamCache += 8;
-                    offsetSp += 8;
-                }
-            }else if(type.equals(void.class)) {
-
-            }else {
-                if(index > ARM_PARAM_COUNT_32) {
-                    Object obj = getObjectParam(sp,offsetSp);
-                    args.add(obj);
-                    offsetSp += 4;
-                }else {
-                    Object obj = getObjectParam(paramCache,offsetParamCache);
-                    args.add(obj);
-                    offsetParamCache += 8;
-                    offsetSp += 4;
-                }
-            }
-
-            index++;
         }
 
         if(!args.isEmpty()) {
@@ -923,7 +693,7 @@ public class FastHookManager {
             }
 
             Class forwardClass = (Class)generateProxy.invoke(null,PROXY_CLASS_NAME + mProxyCount,null,classLoader,methods,null);
-            poseAsObject(forwardClass,getThread());
+            poseAsObject(forwardClass);
             forwardMethod = forwardClass.getDeclaredMethod(methods[0].getName(),paramType);
 
             if(needRecover) {
@@ -939,21 +709,6 @@ public class FastHookManager {
         }
 
         return forwardMethod;
-    }
-
-    private static long getThread() {
-        if(mThread != 0)
-            return mThread;
-
-        try {
-            Field nativePeerF = Thread.currentThread().getClass().getDeclaredField("nativePeer");
-            nativePeerF.setAccessible(true);
-            mThread = (long) nativePeerF.get(Thread.currentThread());
-        }catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return mThread;
     }
 
     private static void doFullRewriteHookInternal(Member targetMethod, Member hookMethod, Member forwardMethod) {
@@ -1122,26 +877,16 @@ public class FastHookManager {
     private native static void init(int version);
     private native static boolean is32bit();
     private native static Member getReflectedMethod(long artMethod);
-    private native static Member getReflectedMethod(int artMethod);
-    private native static boolean getBooleanParam(long address, int offset);
-    private native static boolean getBooleanParam(int address, int offset);
-    private native static byte getByteParam(long address, int offset);
-    private native static byte getByteParam(int address, int offset);
-    private native static char getCharParam(long address, int offset);
-    private native static char getCharParam(int address, int offset);
-    private native static short getShortParam(long address, int offset);
-    private native static short getShortParam(int address, int offset);
-    private native static int getIntParam(long address, int offset);
-    private native static int getIntParam(int address, int offset);
-    private native static long getLongParam(long address, int offset);
-    private native static long getLongParam(int address, int offset);
-    private native static float getFloatParam(long address, int offset);
-    private native static float getFloatParam(int address, int offset);
-    private native static double getDoubleParam(long address, int offset);
-    private native static double getDoubleParam(int address, int offset);
-    private native static Object getObjectParam(long address, int offset);
-    private native static Object getObjectParam(int address, int offset);
-    private native static void poseAsObject(Class targetClass, long thread);
+    private native static boolean getBooleanParam(long sp, int offset);
+    private native static byte getByteParam(long sp, int offset);
+    private native static char getCharParam(long sp, int offset);
+    private native static short getShortParam(long sp, int offset);
+    private native static int getIntParam(long sp, int offset);
+    private native static long getLongParam(long sp, int offset);
+    private native static float getFloatParam(long sp, int offset);
+    private native static double getDoubleParam(long sp, int offset);
+    private native static Object getObjectParam(long sp, int offset);
+    private native static void poseAsObject(Class targetClass);
     private native static Method constructorToMethod(Member method);
     private native static void methodToConstructor(Member method);
     private native static void disableJITInline();
