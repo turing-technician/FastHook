@@ -12,6 +12,9 @@
 uint32_t kPointerSize32 = 4;
 uint32_t kPointerSize64 = 8;
 
+uint32_t kCoreParamArrayOffset = 44;
+uint32_t kFloatParamArrayOffset = 48;
+
 uint32_t kHiddenApiPolicyOffset = 0;
 uint32_t kDarkGreyAndBlackList = 2;
 uint32_t kHiddenApiPolicyScope = 100;
@@ -67,6 +70,12 @@ enum JitState {
 	kCompilingOrFailed
 };
 
+enum ParamArrayType {
+    kSp,
+    kCoreRegArgs,
+    kFpRegArgs
+};
+
 static struct {
 	jfieldID jump_trampoline_;
 	jfieldID quick_hook_trampoline_;
@@ -115,17 +124,19 @@ unsigned char jump_trampoline_[] = {
 		0x00, 0x00, 0x00, 0x00
 };
 
-//DF F8 28 C0 ; ldr ip, [pc, #40] 1f
+//DF F8 2C C0 ; ldr ip, [pc, #44] 1f
 //60 45       ; cmp r0, ip
 //00 bf       ; nop
-//40 F0 0C 80 ; bne.w #24
+//40 F0 0E 80 ; bne.w #28
 //84 46       ; mov ip, r0
 //00 bf       ; nop
-//07 48       ; ldr r0, [pc, #28] 2f
+//08 48       ; ldr r0, [pc, #32] 2f
 //00 bf       ; nop
 //61 46       ; mov r1, ip
 //00 bf       ; nop
 //6A 46       ; mov r2, sp
+//00 bf       ; nop
+//5B 46       ; mov r3, r11
 //00 bf       ; nop
 //DF F8 14 F0 ; ldr ip, [pc ,#20] 3f
 //E7 46       ; mov pc, ip
@@ -138,17 +149,19 @@ unsigned char jump_trampoline_[] = {
 //00 00 00 00 ; 3f:hook method entry point
 //00 00 00 00 ; 4f:other entry point
 unsigned char quick_hook_trampoline_[] = {
-		0xdf, 0xf8, 0x28, 0xc0,
+		0xdf, 0xf8, 0x2c, 0xc0,
 		0x60, 0x45,
 		0x00, 0xbf,
-		0x40, 0xf0, 0x0c, 0x80,
+		0x40, 0xf0, 0x0e, 0x80,
 		0x84, 0x46,
 		0x00, 0xbf,
-		0x07, 0x48,
+		0x08, 0x48,
 		0x00, 0xbf,
 		0x61, 0x46,
 		0x00, 0xbf,
 		0x6a, 0x46,
+		0x00, 0xbf,
+		0x5b, 0x46,
 		0x00, 0xbf,
 		0xdf, 0xf8, 0x14, 0xf0,
 		0xe7, 0x46,
@@ -183,22 +196,26 @@ unsigned char quick_target_trampoline_[] = {
 
 //84 46       ; mov ip, r0
 //00 bf       ; nop
-//03 48       ; ldr r0, [pc, #12]
+//04 48       ; ldr r0, [pc, #16]
 //00 bf       ; nop
 //61 46       ; mov r1, ip
 //00 bf       ; nop
 //6A 46       ; mov r2, sp
+//00 bf       ; nop
+//5B 46       ; mov r3, r11
 //00 bf       ; nop
 //D0 F8 1C F0 ; ldr pc, [r0, #28]
 //00 00 00 00 ; hook method
 unsigned char hook_trampoline_[] = {
         0x84, 0x46,
 		0x00, 0xbf,
-		0x03, 0x48,
+		0x04, 0x48,
 		0x00, 0xbf,
 		0x61, 0x46,
 		0x00, 0xbf,
 		0x6a, 0x46,
+		0x00, 0xbf,
+		0x5b, 0x46,
 		0x00, 0xbf,
 		0xd0, 0xf8, 0x1c, 0xf0,
 		0x00, 0x00, 0x00, 0x00
