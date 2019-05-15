@@ -717,7 +717,7 @@ public class FastHookManager {
         List<Object> args = new ArrayList<Object>();
 
         if(!isStatic) {
-            param.receiver = getObjectParam(r11,gpr_index * 4, 1);
+            param.receiver = getObjectParam(r11,gpr_index * 4, TYPE_CORE_REG_ARGS);
             gpr_index += 1;
             offset += 4;
         }
@@ -732,7 +732,7 @@ public class FastHookManager {
                     args.add(new Boolean(b));
                     gpr_index += 1;
                 }else {
-                    boolean b = getBooleanParam(r11,offset,TYPE_SP);
+                    boolean b = getBooleanParam(sp,offset,TYPE_SP);
                     args.add(new Boolean(b));
                 }
                 offset += 4;
@@ -821,6 +821,7 @@ public class FastHookManager {
                 if(gpr_index < CORE_REG_ARGS_SIZE) {
                     Object obj = getObjectParam(r11,gpr_index * 4,TYPE_CORE_REG_ARGS);
                     args.add(obj);
+                    gpr_index += 1;
                 }else {
                     Object obj = getObjectParam(sp,offset,TYPE_SP);
                     args.add(obj);
